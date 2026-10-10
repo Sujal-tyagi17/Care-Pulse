@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { Icon } from './Icon';
+import { ThemeToggle } from './ThemeToggle';
 
 interface TopAppBarProps {
   searchQuery?: string;
@@ -141,158 +143,113 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
   const getIcon = (type: NotificationItem['type']) => {
     switch (type) {
       case 'appointment':
-        return <span className="material-symbols-outlined text-primary text-base">calendar_month</span>;
+        return <Icon name="calendar_month" className="text-primary text-base" />;
       case 'medication':
-        return <span className="material-symbols-outlined text-tertiary text-base">alarm_on</span>;
+        return <Icon name="alarm_on" className="text-tertiary text-base" />;
       case 'ai':
-        return <span className="material-symbols-outlined text-secondary text-base">psychiatry</span>;
+        return <Icon name="psychiatry" className="text-secondary text-base" />;
       default:
-        return <span className="material-symbols-outlined text-on-surface-variant text-base">info</span>;
+        return <Icon name="info" className="text-on-surface-variant text-base" />;
     }
   };
 
   return (
-    <header className="fixed top-0 right-0 left-0 md:left-64 flex justify-between items-center px-6 h-16 z-30 bg-surface/90 backdrop-blur-xl border-b border-outline-variant shadow-md">
-      {/* Search Input on Left */}
-      <div className="flex items-center gap-4 flex-1">
-        <div className="relative w-full max-w-md hidden sm:block focus-within:ring-2 focus-within:ring-primary/50 transition-all rounded-full">
-          <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-base">
-            search
-          </span>
+    <header className="fixed top-0 right-0 left-0 md:left-64 flex justify-between items-center gap-3 px-4 sm:px-6 h-16 z-30 bg-surface/90 backdrop-blur border-b border-line">
+      <div className="flex items-center gap-4 flex-1 min-w-0">
+        <div className="relative w-full max-w-md hidden sm:block">
+          <Icon name="search" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-subtle text-base" />
           <input
-            type="text"
+            type="search"
             value={searchQuery}
-            onChange={e => onSearchChange && onSearchChange(e.target.value)}
-            placeholder="Search patients, records, doctors..."
-            className="w-full bg-surface-container border border-outline-variant rounded-full py-1.5 pl-10 pr-4 text-xs text-on-surface placeholder:text-on-surface-variant/70 focus:outline-none focus:bg-surface-container-high transition-all font-medium"
+            onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
+            placeholder="Search patients, records, doctors"
+            aria-label="Search"
+            className="field rounded-full py-2 pl-10"
           />
         </div>
-        <span className="font-heading font-extrabold text-sm text-on-surface sm:hidden">{title}</span>
+        <span className="font-heading font-extrabold text-base text-fg sm:hidden truncate">{title}</span>
       </div>
 
-      {/* Trailing Icon Actions & User Profile */}
-      <div className="flex items-center gap-2">
-        {/* Notification Bell with Dropdown */}
+      <div className="flex items-center gap-1">
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all relative ${
-              showNotifications
-                ? 'bg-primary/20 text-primary ring-2 ring-primary/40'
-                : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high'
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative ${
+              showNotifications ? 'bg-primary/10 text-primary' : 'text-muted hover:text-fg hover:bg-surface-container'
             }`}
-            title="Notifications"
+            aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}
             aria-expanded={showNotifications}
           >
-            <span className="material-symbols-outlined text-lg">notifications</span>
-            {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-primary rounded-full border-2 border-surface animate-pulse" />
-            )}
+            <Icon name="notifications" className="text-lg" />
+            {unreadCount > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-primary rounded-full ring-2 ring-surface" />}
           </button>
 
-          {/* Notifications Dropdown Panel */}
           {showNotifications && (
-            <div className="absolute right-0 top-full mt-3 w-80 sm:w-96 bg-[#0b1328] border border-cyan-500/25 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] overflow-hidden z-50 animate-fade-in backdrop-blur-3xl ring-1 ring-white/10">
-              {/* Dropdown Header */}
-              <div className="p-3.5 border-b border-white/10 flex items-center justify-between bg-[#0f1b38]">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center text-primary border border-primary/30">
-                    <span className="material-symbols-outlined text-sm">notifications_active</span>
-                  </div>
-                  <span className="font-heading font-extrabold text-xs text-white">Notifications</span>
-                  {unreadCount > 0 && (
-                    <span className="px-2 py-0.5 rounded-full bg-primary/25 text-primary text-[10px] font-extrabold font-mono border border-primary/40">
-                      {unreadCount} new
-                    </span>
-                  )}
-                </div>
+            <div className="absolute right-0 top-full mt-2 w-[min(22rem,calc(100vw-2rem))] bg-surface border border-line rounded-2xl shadow-pop overflow-hidden z-50 animate-fade-in">
+              <div className="px-4 py-3 border-b border-line flex items-center justify-between">
+                <span className="font-heading font-bold text-sm text-fg">
+                  Notifications{unreadCount > 0 && <span className="ml-2 text-xs font-semibold text-primary">{unreadCount} new</span>}
+                </span>
                 {unreadCount > 0 && (
-                  <button
-                    onClick={markAllAsRead}
-                    className="text-[11px] text-primary hover:text-cyan-300 font-heading font-bold transition-colors"
-                  >
+                  <button onClick={markAllAsRead} className="text-xs text-primary hover:underline font-semibold">
                     Mark all as read
                   </button>
                 )}
               </div>
-
-              {/* Notification List */}
-              <div className="max-h-80 overflow-y-auto divide-y divide-white/5 bg-[#0b1328]">
+              <div className="max-h-80 overflow-y-auto divide-y divide-line">
                 {notifications.length === 0 ? (
-                  <div className="py-10 text-center text-on-surface-variant space-y-2">
-                    <span className="material-symbols-outlined text-3xl text-on-surface-variant/40">notifications_off</span>
-                    <p className="text-xs font-medium">All caught up! No notifications.</p>
+                  <div className="py-10 px-6 text-center text-muted space-y-2">
+                    <Icon name="notifications_off" className="text-2xl text-subtle" />
+                    <p className="text-sm">You're all caught up.</p>
                   </div>
                 ) : (
-                  notifications.map(item => (
-                    <div
-                      key={item.id}
-                      className={`p-3.5 transition-colors flex items-start gap-3 relative group ${
-                        item.read
-                          ? 'bg-[#0b1328] hover:bg-[#111e3b]'
-                          : 'bg-[#101d3a] hover:bg-[#15254a] border-l-2 border-primary'
-                      }`}
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-[#142347] flex items-center justify-center shrink-0 border border-white/10 shadow-sm">
-                        {getIcon(item.type)}
-                      </div>
-                      <div className="flex-1 min-w-0 pr-4">
-                        <div className="flex items-center justify-between gap-1">
-                          <p className={`text-xs font-heading font-bold truncate ${item.read ? 'text-slate-200' : 'text-white'}`}>
-                            {item.title}
-                          </p>
-                          <span className="text-[10px] text-cyan-400/80 font-mono shrink-0 font-medium">
-                            {item.time}
-                          </span>
+                  notifications.map((item) => (
+                    <div key={item.id} className={`px-4 py-3 flex items-start gap-3 relative group ${item.read ? '' : 'bg-primary/[0.04]'}`}>
+                      <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center shrink-0">{getIcon(item.type)}</div>
+                      <div className="flex-1 min-w-0 pr-5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-fg truncate">{item.title}</p>
+                          <span className="text-xs text-subtle shrink-0">{item.time}</span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-1 leading-relaxed line-clamp-2">
-                          {item.message}
-                        </p>
+                        <p className="text-xs text-muted mt-0.5 leading-relaxed line-clamp-2">{item.message}</p>
                       </div>
-
-                      {/* Delete action button on hover */}
+                      {!item.read && <span className="absolute left-1.5 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-primary" aria-label="Unread" />}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           removeNotification(item.id);
                         }}
-                        className="absolute right-2 top-2 p-1 text-slate-500 hover:text-red-400 rounded transition-opacity opacity-0 group-hover:opacity-100"
-                        title="Dismiss notification"
+                        className="absolute right-2 top-2.5 p-1 text-subtle hover:text-danger rounded opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        aria-label={`Dismiss ${item.title}`}
                       >
-                        <span className="material-symbols-outlined text-sm">close</span>
+                        <Icon name="close" className="text-sm" />
                       </button>
                     </div>
                   ))
                 )}
               </div>
-
-              {/* Footer */}
-              <div className="p-2.5 border-t border-white/10 bg-[#080e1c] text-center">
-                <span className="text-[10px] font-medium text-slate-400">CarePulse Real-Time Clinical Notifications</span>
-              </div>
             </div>
           )}
         </div>
 
-        {/* AI Assistant Button */}
         <button
           onClick={onOpenAIInsights}
-          className="w-9 h-9 rounded-full flex items-center justify-center text-secondary hover:text-primary hover:bg-surface-container-high transition-all"
-          title="AI Assistant"
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-muted hover:text-primary hover:bg-surface-container transition-colors"
+          aria-label="AI assistant"
+          title="AI assistant"
         >
-          <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
-            auto_awesome
-          </span>
+          <Icon name="auto_awesome" className="text-lg" />
         </button>
 
-        {/* User Avatar */}
-        <div className="flex items-center gap-2.5 ml-2 pl-2 border-l border-outline-variant">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-heading font-extrabold text-xs shadow-sm">
+        <ThemeToggle className="text-muted hover:text-fg hover:bg-surface-container" />
+
+        <div className="flex items-center gap-2.5 ml-1 pl-3 border-l border-line">
+          <div className="w-8 h-8 rounded-full bg-primary-soft text-on-primary-soft flex items-center justify-center font-heading font-bold text-sm">
             {user?.name?.charAt(0) || 'U'}
           </div>
           <div className="hidden lg:block text-left">
-            <p className="text-xs font-bold text-on-surface font-heading leading-tight truncate max-w-[120px]">{user?.name}</p>
-            <p className="text-[10px] text-on-surface-variant capitalize font-medium">{user?.role?.toLowerCase()}</p>
+            <p className="text-sm font-semibold text-fg leading-tight truncate max-w-[140px]">{user?.name}</p>
+            <p className="text-xs text-muted capitalize">{user?.role === 'ADMIN' ? 'Clinic admin' : user?.role?.toLowerCase()}</p>
           </div>
         </div>
       </div>

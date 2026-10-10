@@ -93,29 +93,29 @@ export const VerifiableDocumentModal: React.FC<Props> = ({ appointment, kind, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in text-[#dae2fd]">
-      <div className="glass-panel rounded-3xl shadow-2xl max-w-xl w-full border border-white/15 overflow-hidden max-h-[92vh] overflow-y-auto">
-        <div className="ai-gradient-card px-6 py-5 text-white flex items-center justify-between border-b border-white/10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0b1513]/50 backdrop-blur-md animate-fade-in text-fg">
+      <div className="glass-panel rounded-3xl shadow-2xl max-w-xl w-full border border-line-strong overflow-hidden max-h-[92vh] overflow-y-auto">
+        <div className="ai-gradient-card px-6 py-5 text-fg flex items-center justify-between border-b border-line">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-500/15 text-emerald-300 rounded-2xl border border-emerald-400/30">
+            <div className="p-2.5 bg-success-soft text-success rounded-2xl border border-success/40">
               {kind === 'certificate' ? <FileBadge className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
             </div>
             <div>
               <h2 className="font-heading font-extrabold text-base">{title}</h2>
-              <p className="text-[11px] text-on-surface-variant">
+              <p className="text-xs text-on-surface-variant">
                 {appointment.doctor?.name} · {appointment.date}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/10 transition-colors" aria-label="Close">
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-fg/10 transition-colors" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-6 space-y-5 text-xs">
           {certificate && (
-            <div className="bg-surface-container/70 rounded-xl border border-white/5 p-4 space-y-2">
-              <p className="text-white leading-relaxed">
+            <div className="bg-surface-container/70 rounded-xl border border-line p-4 space-y-2">
+              <p className="text-fg leading-relaxed">
                 {certificateStatement(certificate.certificate, appointment.patient?.name ?? 'You', appointment.date)}
               </p>
               <p className="text-on-surface-variant">Remarks: {certificate.certificate.remarks}</p>
@@ -137,9 +137,9 @@ export const VerifiableDocumentModal: React.FC<Props> = ({ appointment, kind, on
             </div>
           </div>
 
-          <div className="bg-surface-container/70 rounded-xl border border-white/5 p-3.5 space-y-2.5">
+          <div className="bg-surface-container/70 rounded-xl border border-line p-3.5 space-y-2.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant font-heading flex items-center gap-1">
+              <span className="text-xs font-bold text-on-surface-variant font-heading flex items-center gap-1">
                 <Fingerprint className="w-3.5 h-3.5" /> Record fingerprint (SHA-256)
               </span>
               <button onClick={copyHash} className="flex items-center gap-1 text-primary hover:underline font-bold">
@@ -147,37 +147,37 @@ export const VerifiableDocumentModal: React.FC<Props> = ({ appointment, kind, on
                 {copied ? 'Copied' : 'Copy'}
               </button>
             </div>
-            <code className="block text-[11px] text-white break-all font-mono">{record.recordHash}</code>
+            <code className="block text-xs text-fg break-all font-mono">{record.recordHash}</code>
 
-            <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5 pt-1 text-[11px]">
+            <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5 pt-1 text-xs">
               {record.chainId > 0 && (
                 <>
                   <dt className="text-on-surface-variant">Network</dt>
-                  <dd className="text-white">{networkName(record.chainId)}</dd>
+                  <dd className="text-fg">{networkName(record.chainId)}</dd>
                 </>
               )}
               {record.doctorAddress && !/^0x0+$/.test(record.doctorAddress) && (
                 <>
                   <dt className="text-on-surface-variant">Signed by</dt>
-                  <dd className="text-white font-mono">{shortHash(record.doctorAddress)}</dd>
+                  <dd className="text-fg font-mono">{shortHash(record.doctorAddress)}</dd>
                 </>
               )}
               {record.anchorMode === 'BATCH' && record.batchId !== null && record.batchId !== undefined && (
                 <>
                   <dt className="text-on-surface-variant">Anchoring</dt>
-                  <dd className="text-white">Merkle batch #{record.batchId}</dd>
+                  <dd className="text-fg">Merkle batch #{record.batchId}</dd>
                 </>
               )}
               {record.anchoredAt && (
                 <>
                   <dt className="text-on-surface-variant">Anchored</dt>
-                  <dd className="text-white">{new Date(record.anchoredAt).toLocaleString()}</dd>
+                  <dd className="text-fg">{new Date(record.anchoredAt).toLocaleString()}</dd>
                 </>
               )}
               {record.txHash && (
                 <>
                   <dt className="text-on-surface-variant">Transaction</dt>
-                  <dd className="text-white font-mono">
+                  <dd className="text-fg font-mono">
                     {record.txUrl ? (
                       <a href={record.txUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
                         {shortHash(record.txHash)} <ExternalLink className="w-3 h-3" />
@@ -212,7 +212,7 @@ export const VerifiableDocumentModal: React.FC<Props> = ({ appointment, kind, on
             <button
               onClick={download}
               disabled={!canonical}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-white border border-white/10 font-heading font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-fg border border-line font-heading font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
             >
               <Download className="w-4 h-4" /> Download verifiable copy
             </button>

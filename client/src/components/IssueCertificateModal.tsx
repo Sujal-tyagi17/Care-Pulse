@@ -59,24 +59,24 @@ export const IssueCertificateModal: React.FC<Props> = ({ appointment, onClose, o
   };
 
   const input =
-    'w-full bg-surface-container border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-primary';
+    'w-full bg-surface-container border border-line rounded-xl px-3 py-2 text-sm text-fg focus:outline-none focus:border-primary';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in text-[#dae2fd]">
-      <form onSubmit={submit} className="glass-panel rounded-3xl shadow-2xl max-w-lg w-full border border-white/15 overflow-hidden max-h-[92vh] overflow-y-auto">
-        <div className="ai-gradient-card px-6 py-5 text-white flex items-center justify-between border-b border-white/10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0b1513]/50 backdrop-blur-md animate-fade-in text-fg">
+      <form onSubmit={submit} className="glass-panel rounded-3xl shadow-2xl max-w-lg w-full border border-line-strong overflow-hidden max-h-[92vh] overflow-y-auto">
+        <div className="ai-gradient-card px-6 py-5 text-fg flex items-center justify-between border-b border-line">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-tertiary-container/20 text-tertiary rounded-2xl border border-tertiary/30">
               <FileBadge className="w-5 h-5" />
             </div>
             <div>
               <h2 className="font-heading font-extrabold text-base">{existing ? 'Re-issue' : 'Issue'} medical certificate</h2>
-              <p className="text-[11px] text-on-surface-variant">
+              <p className="text-xs text-on-surface-variant">
                 {appointment.patient?.name} · visit {appointment.date}
               </p>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-white/10 transition-colors" aria-label="Close">
+          <button type="button" onClick={onClose} className="p-2 rounded-xl hover:bg-fg/10 transition-colors" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -88,11 +88,11 @@ export const IssueCertificateModal: React.FC<Props> = ({ appointment, onClose, o
               <label
                 key={t.type}
                 className={`cursor-pointer rounded-xl border p-3 transition-colors ${
-                  type === t.type ? 'border-primary bg-primary/10' : 'border-white/10 hover:border-white/25'
+                  type === t.type ? 'border-primary bg-primary/10' : 'border-line hover:border-line-strong'
                 }`}
               >
                 <input type="radio" name="type" className="sr-only" checked={type === t.type} onChange={() => setType(t.type)} />
-                <span className="block font-heading font-bold text-white">{CERTIFICATE_LABELS[t.type]}</span>
+                <span className="block font-heading font-bold text-fg">{CERTIFICATE_LABELS[t.type]}</span>
                 <span className="block text-on-surface-variant mt-0.5">{t.hint}</span>
               </label>
             ))}
@@ -126,20 +126,20 @@ export const IssueCertificateModal: React.FC<Props> = ({ appointment, onClose, o
             />
           </label>
 
-          <div className="bg-surface-container/70 rounded-xl border border-white/5 p-3.5 space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant font-heading">Certificate will read</p>
-            <p className="text-white leading-relaxed">{preview}</p>
+          <div className="bg-surface-container/70 rounded-xl border border-line p-3.5 space-y-1">
+            <p className="text-xs font-bold text-on-surface-variant font-heading">Certificate will read</p>
+            <p className="text-fg leading-relaxed">{preview}</p>
           </div>
 
           <p className="text-on-surface-variant flex gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-300 shrink-0" />
+            <ShieldCheck className="w-4 h-4 text-success shrink-0" />
             Signed with your doctor key and recorded on the blockchain. {existing ? 'The previous certificate will be revoked.' : ''}
           </p>
 
-          {error && <p className="text-red-300">{error}</p>}
+          {error && <p className="text-danger">{error}</p>}
 
           <div className="flex gap-2.5 justify-end">
-            <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl border border-white/10 text-white font-heading font-bold">
+            <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl border border-line text-fg font-heading font-bold">
               Cancel
             </button>
             <button

@@ -1,20 +1,30 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CarePulse | Healthcare Appointment & Follow-Up Manager</title>
-    <meta name="description" content="Intelligent healthcare appointment booking platform with AI symptom triage, post-visit translation, and automated follow-ups." />
-    <!-- Google Fonts: Plus Jakarta Sans & Inter & Material Symbols -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <title>CarePulse | Appointments and verifiable prescriptions</title>
+    <meta
+      name="description"
+      content="Book doctors, get AI-assisted consultations, and receive prescriptions and medical certificates that anyone can verify on a public blockchain."
+    />
+    <meta name="theme-color" content="#0F766E" />
+    <script>
+      // Apply the saved theme before first paint (light by default).
+      try {
+        if (localStorage.getItem('carepulse_theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      } catch (e) {}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
   </head>
-  <body class="bg-[#0b1326] text-[#dae2fd] antialiased font-sans selection:bg-primary-container selection:text-white min-h-screen">
+  <body class="min-h-screen">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

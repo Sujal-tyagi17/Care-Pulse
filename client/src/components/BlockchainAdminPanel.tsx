@@ -16,13 +16,13 @@ const formatBalance = (wei: string) => {
 };
 
 const Stat: React.FC<{ label: string; value: React.ReactNode; Icon: React.ElementType }> = ({ label, value, Icon }) => (
-  <div className="glass-card rounded-2xl p-4 border border-white/10 flex items-center gap-3">
+  <div className="glass-card rounded-2xl p-4 border border-line flex items-center gap-3">
     <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20">
       <Icon className="w-5 h-5" />
     </div>
     <div className="min-w-0">
-      <p className="text-[11px] text-on-surface-variant">{label}</p>
-      <p className="font-heading font-extrabold text-white text-lg truncate">{value}</p>
+      <p className="text-xs text-on-surface-variant">{label}</p>
+      <p className="font-heading font-extrabold text-fg text-lg truncate">{value}</p>
     </div>
   </div>
 );
@@ -92,7 +92,7 @@ export const BlockchainAdminPanel: React.FC = () => {
     <div className="flex flex-col gap-6 shrink-0">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-          <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-white mb-1">Blockchain Verification</h1>
+          <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-fg mb-1">Blockchain Verification</h1>
           <p className="text-xs sm:text-sm text-on-surface-variant max-w-2xl">
             Verify doctors on-chain so their signed prescriptions and certificates are accepted, and monitor anchoring. Only salted fingerprints
             are written to the chain; no patient data ever leaves the database.
@@ -108,8 +108,8 @@ export const BlockchainAdminPanel: React.FC = () => {
       </div>
 
       {data && !data.enabled && (
-        <div className="glass-card rounded-2xl p-5 border border-amber-400/30 text-xs space-y-1.5">
-          <p className="font-heading font-bold text-amber-300 flex items-center gap-1.5">
+        <div className="glass-card rounded-2xl p-5 border border-warning/40 text-xs space-y-1.5">
+          <p className="font-heading font-bold text-warning flex items-center gap-1.5">
             <AlertTriangle className="w-4 h-4" />
             {data.demo ? 'Demo mode: no backend connected' : 'Blockchain anchoring is not configured on the server'}
           </p>
@@ -121,7 +121,7 @@ export const BlockchainAdminPanel: React.FC = () => {
       )}
 
       {data?.networkError && (
-        <div className="glass-card rounded-2xl p-4 border border-red-400/30 text-xs text-red-300">
+        <div className="glass-card rounded-2xl p-4 border border-danger/40 text-xs text-danger">
           Could not reach the blockchain: {data.networkError}
         </div>
       )}
@@ -136,9 +136,9 @@ export const BlockchainAdminPanel: React.FC = () => {
       )}
 
       {net && (
-        <section className="glass-card rounded-2xl p-5 border border-white/10 text-xs grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5">
+        <section className="glass-card rounded-2xl p-5 border border-line text-xs grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5">
           <span className="text-on-surface-variant">Registry contract</span>
-          <span className="font-mono text-white break-all">
+          <span className="font-mono text-fg break-all">
             {net.contractUrl ? (
               <a href={net.contractUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
                 {net.contractAddress} <ExternalLink className="w-3 h-3" />
@@ -148,25 +148,25 @@ export const BlockchainAdminPanel: React.FC = () => {
             )}
           </span>
           <span className="text-on-surface-variant">Hospital relayer</span>
-          <span className="font-mono text-white break-all">
+          <span className="font-mono text-fg break-all">
             {net.relayerAddress}{' '}
-            {!net.relayerIsOwner && <span className="text-red-300 font-sans">(not the contract owner — doctor registration will fail)</span>}
+            {!net.relayerIsOwner && <span className="text-danger font-sans">(not the contract owner — doctor registration will fail)</span>}
           </span>
           <span className="text-on-surface-variant">Records</span>
-          <span className="text-white">
+          <span className="text-fg">
             {['CONFIRMED', 'PENDING', 'SUBMITTED', 'FAILED', 'REVOKED'].map((k) => `${k.toLowerCase()}: ${counts[k] ?? 0}`).join(' · ')}
           </span>
         </section>
       )}
 
       {net && data?.batching && (
-        <section className="glass-card rounded-2xl border border-white/10 overflow-hidden">
-          <div className="px-5 py-4 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <section className="glass-card rounded-2xl border border-line overflow-hidden">
+          <div className="px-5 py-4 border-b border-line flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
-              <h3 className="font-heading font-extrabold text-sm text-white flex items-center gap-1.5">
+              <h3 className="font-heading font-extrabold text-sm text-fg flex items-center gap-1.5">
                 <Layers className="w-4 h-4 text-primary" /> Merkle batch anchoring
               </h3>
-              <p className="text-[11px] text-on-surface-variant">
+              <p className="text-xs text-on-surface-variant">
                 {data.batching.mode === 'BATCH'
                   ? `Every ${data.batching.intervalMinutes} min, all new records and the audit-log head go on-chain in one transaction. ${
                       data.batching.pendingRecords
@@ -190,7 +190,7 @@ export const BlockchainAdminPanel: React.FC = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="text-on-surface-variant text-left">
-                  <tr className="border-b border-white/5">
+                  <tr className="border-b border-line">
                     <th className="px-5 py-2.5 font-semibold">Batch</th>
                     <th className="px-5 py-2.5 font-semibold">Records</th>
                     <th className="px-5 py-2.5 font-semibold">Audit checkpoint</th>
@@ -200,8 +200,8 @@ export const BlockchainAdminPanel: React.FC = () => {
                 </thead>
                 <tbody>
                   {data.batching.recentBatches.map((b) => (
-                    <tr key={b.id} className="border-b border-white/5 last:border-0">
-                      <td className="px-5 py-2.5 text-white font-mono">
+                    <tr key={b.id} className="border-b border-line last:border-0">
+                      <td className="px-5 py-2.5 text-fg font-mono">
                         {b.onChainBatchId !== null ? (
                           b.txUrl ? (
                             <a href={b.txUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
@@ -214,14 +214,14 @@ export const BlockchainAdminPanel: React.FC = () => {
                           '—'
                         )}
                       </td>
-                      <td className="px-5 py-2.5 text-white">{b.leafCount}</td>
+                      <td className="px-5 py-2.5 text-fg">{b.leafCount}</td>
                       <td className="px-5 py-2.5 text-on-surface-variant">entry #{b.auditSeq}</td>
                       <td className="px-5 py-2.5 text-on-surface-variant whitespace-nowrap">{new Date(b.anchoredAt ?? b.createdAt).toLocaleString()}</td>
                       <td className="px-5 py-2.5 text-right">
                         <span
                           title={b.lastError ?? undefined}
                           className={
-                            b.status === 'CONFIRMED' ? 'text-emerald-300 font-bold' : b.status === 'FAILED' ? 'text-red-300 font-bold' : 'text-amber-300 font-bold'
+                            b.status === 'CONFIRMED' ? 'text-success font-bold' : b.status === 'FAILED' ? 'text-danger font-bold' : 'text-warning font-bold'
                           }
                         >
                           {b.status.toLowerCase()}
@@ -239,22 +239,22 @@ export const BlockchainAdminPanel: React.FC = () => {
       {message && (
         <div
           className={`rounded-xl px-4 py-3 text-xs border ${
-            message.type === 'ok' ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-red-400/30 bg-red-500/10 text-red-300'
+            message.type === 'ok' ? 'border-success/40 bg-success-soft text-success' : 'border-danger/40 bg-danger-soft text-danger'
           }`}
         >
           {message.text}
         </div>
       )}
 
-      <section className="glass-card rounded-2xl border border-white/10 overflow-hidden">
-        <div className="px-5 py-4 border-b border-white/10">
-          <h3 className="font-heading font-extrabold text-sm text-white">Doctor registry</h3>
-          <p className="text-[11px] text-on-surface-variant">A doctor's prescriptions are only accepted on-chain after you verify them here.</p>
+      <section className="glass-card rounded-2xl border border-line overflow-hidden">
+        <div className="px-5 py-4 border-b border-line">
+          <h3 className="font-heading font-extrabold text-sm text-fg">Doctor registry</h3>
+          <p className="text-xs text-on-surface-variant">A doctor's prescriptions are only accepted on-chain after you verify them here.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="text-on-surface-variant text-left">
-              <tr className="border-b border-white/5">
+              <tr className="border-b border-line">
                 <th className="px-5 py-2.5 font-semibold">Doctor</th>
                 <th className="px-5 py-2.5 font-semibold">Signing wallet</th>
                 <th className="px-5 py-2.5 font-semibold">On-chain status</th>
@@ -263,9 +263,9 @@ export const BlockchainAdminPanel: React.FC = () => {
             </thead>
             <tbody>
               {(data?.doctors ?? []).map((d) => (
-                <tr key={d.id} className="border-b border-white/5 last:border-0">
+                <tr key={d.id} className="border-b border-line last:border-0">
                   <td className="px-5 py-3">
-                    <p className="text-white font-semibold">{d.name}</p>
+                    <p className="text-fg font-semibold">{d.name}</p>
                     <p className="text-on-surface-variant">{d.specialization}</p>
                   </td>
                   <td className="px-5 py-3 font-mono text-on-surface-variant">
@@ -285,11 +285,11 @@ export const BlockchainAdminPanel: React.FC = () => {
                     {!d.registeredOnChain ? (
                       <span className="text-on-surface-variant">Not verified</span>
                     ) : d.activeOnChain ? (
-                      <span className="inline-flex items-center gap-1 text-emerald-300 font-bold">
+                      <span className="inline-flex items-center gap-1 text-success font-bold">
                         <ShieldCheck className="w-3.5 h-3.5" /> Verified
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-red-300 font-bold">
+                      <span className="inline-flex items-center gap-1 text-danger font-bold">
                         <ShieldOff className="w-3.5 h-3.5" /> Suspended
                       </span>
                     )}
@@ -309,7 +309,7 @@ export const BlockchainAdminPanel: React.FC = () => {
                         <button
                           onClick={() => act(d.id, () => api.setDoctorChainStatus(d.id, !d.activeOnChain))}
                           className={`px-3 py-1.5 rounded-lg border font-heading font-bold ${
-                            d.activeOnChain ? 'border-red-400/40 text-red-300 hover:bg-red-500/10' : 'border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/10'
+                            d.activeOnChain ? 'border-danger/40 text-danger hover:bg-danger-soft' : 'border-success/40 text-success hover:bg-success-soft'
                           }`}
                         >
                           {d.activeOnChain ? 'Suspend' : 'Reinstate'}
@@ -324,15 +324,15 @@ export const BlockchainAdminPanel: React.FC = () => {
       </section>
 
       {data && data.recentRecords.length > 0 && (
-        <section className="glass-card rounded-2xl border border-white/10 overflow-hidden">
-          <div className="px-5 py-4 border-b border-white/10">
-            <h3 className="font-heading font-extrabold text-sm text-white">Recent records</h3>
+        <section className="glass-card rounded-2xl border border-line overflow-hidden">
+          <div className="px-5 py-4 border-b border-line">
+            <h3 className="font-heading font-extrabold text-sm text-fg">Recent records</h3>
           </div>
-          <div className="divide-y divide-white/5">
+          <div className="divide-y divide-line">
             {data.recentRecords.map((r) => (
               <div key={r.recordHash} className="px-5 py-3 flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-xs">
                 <div className="flex-1 min-w-0">
-                  <p className="text-white font-semibold">
+                  <p className="text-fg font-semibold">
                     {r.patientName} · {r.doctorName}
                   </p>
                   <p className="text-on-surface-variant">

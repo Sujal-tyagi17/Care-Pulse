@@ -107,10 +107,10 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in text-[#dae2fd]">
-      <div className="glass-panel rounded-3xl shadow-2xl max-w-xl w-full border border-white/15 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0b1513]/50 backdrop-blur-md animate-fade-in text-fg">
+      <div className="glass-panel rounded-3xl shadow-2xl max-w-xl w-full border border-line-strong overflow-hidden">
         {/* Header */}
-        <div className="ai-gradient-card px-6 py-5 text-white flex items-center justify-between border-b border-white/10">
+        <div className="ai-gradient-card px-6 py-5 text-fg flex items-center justify-between border-b border-line">
           <div>
             <h3 className="font-bold text-lg font-heading">
               {bookingResult ? 'Appointment Confirmed!' : 'Pre-Visit Symptom Questionnaire'}
@@ -121,7 +121,7 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
           </div>
           <button
             onClick={handleClose}
-            className="p-1.5 rounded-xl text-on-surface-variant hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-xl text-on-surface-variant hover:text-fg hover:bg-fg/10 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -148,13 +148,13 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
               <div className="bg-secondary-container/15 border border-secondary/30 rounded-2xl p-3.5 text-xs text-secondary flex items-start gap-2.5">
                 <Sparkles className="w-4 h-4 text-secondary shrink-0 mt-0.5 animate-pulse" />
                 <p className="leading-relaxed">
-                  Our <strong className="text-white">AI Clinical Triage Assistant</strong> will evaluate your symptoms in advance to calculate an urgency score and prepare diagnostic questions for your doctor.
+                  Our <strong className="text-fg">AI Clinical Triage Assistant</strong> will evaluate your symptoms in advance to calculate an urgency score and prepare diagnostic questions for your doctor.
                 </p>
               </div>
 
               {/* Symptom Input */}
               <div>
-                <label className="block text-xs font-bold text-white uppercase tracking-wider mb-2 font-heading">
+                <label className="block text-xs font-bold text-fg mb-2 font-heading">
                   Describe what you are experiencing *
                 </label>
                 <textarea
@@ -162,21 +162,21 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
                   value={symptoms}
                   onChange={e => setSymptoms(e.target.value)}
                   placeholder="E.g., I've had a dull headache for 4 days, mild sensitivity to light, and felt nauseous this morning..."
-                  className="w-full text-xs sm:text-sm p-3.5 rounded-2xl bg-surface-container border border-white/10 text-white focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-on-surface-variant/50"
+                  className="w-full text-xs sm:text-sm p-3.5 rounded-2xl bg-surface-container border border-line text-fg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-on-surface-variant/50"
                   required
                 />
               </div>
 
               {/* Quick Tags */}
               <div>
-                <span className="text-[11px] font-semibold text-on-surface-variant block mb-2 font-heading">Quick Symptom Tags:</span>
+                <span className="text-xs font-semibold text-on-surface-variant block mb-2 font-heading">Quick Symptom Tags:</span>
                 <div className="flex flex-wrap gap-1.5">
                   {COMMON_SYMPTOM_TAGS.map(tag => (
                     <button
                       key={tag}
                       type="button"
                       onClick={() => handleTagClick(tag)}
-                      className="text-xs px-3 py-1.5 bg-surface-container hover:bg-primary-container hover:text-white border border-white/10 hover:border-primary/40 rounded-xl text-on-surface transition-all font-heading"
+                      className="text-xs px-3 py-1.5 bg-surface-container hover:bg-primary-container hover:text-fg border border-line hover:border-primary/40 rounded-xl text-on-surface transition-all font-heading"
                     >
                       + {tag}
                     </button>
@@ -192,18 +192,18 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
               )}
 
               {/* Actions */}
-              <div className="pt-3 flex items-center justify-end gap-3 border-t border-white/10">
+              <div className="pt-3 flex items-center justify-end gap-3 border-t border-line">
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="px-4 py-2 text-xs font-semibold text-on-surface-variant hover:text-white rounded-xl transition-colors font-heading"
+                  className="px-4 py-2 text-xs font-semibold text-on-surface-variant hover:text-fg rounded-xl transition-colors font-heading"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || timeLeft === 0}
-                  className="px-5 py-2.5 bg-gradient-to-r from-primary-container to-secondary-container hover:from-primary-container hover:to-secondary-container text-white text-xs font-bold rounded-xl shadow-neon-cyan disabled:opacity-50 transition-all flex items-center gap-2 font-heading"
+                  className="px-5 py-2.5 bg-primary   text-on-primary text-xs font-bold rounded-xl shadow-neon-cyan disabled:opacity-50 transition-all flex items-center gap-2 font-heading"
                 >
                   {isSubmitting ? (
                     <>
@@ -226,7 +226,7 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
                 <div className="w-14 h-14 bg-tertiary-container/20 border border-tertiary/40 text-tertiary rounded-full flex items-center justify-center mx-auto mb-3 shadow-neon-cyan">
                   <CheckCircle className="w-8 h-8" />
                 </div>
-                <h4 className="font-extrabold text-white text-xl font-heading">Booking Confirmed!</h4>
+                <h4 className="font-extrabold text-fg text-xl font-heading">Booking Confirmed!</h4>
                 <p className="text-xs text-on-surface-variant mt-1">
                   A confirmation email has been dispatched to your inbox.
                 </p>
@@ -245,7 +245,7 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
                         bookingResult.preVisitSummary.urgencyLevel === 'HIGH'
                           ? 'bg-error-container/30 text-error border border-error/40'
                           : bookingResult.preVisitSummary.urgencyLevel === 'MEDIUM'
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
+                          ? 'bg-warning-soft text-warning border border-warning/40'
                           : 'bg-tertiary-container/20 text-tertiary border border-tertiary/40'
                       }`}
                     >
@@ -255,19 +255,19 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
 
                   <div>
                     <p className="text-xs text-on-surface-variant font-semibold">Chief Complaint:</p>
-                    <p className="text-xs font-medium text-white mt-1 leading-relaxed">
+                    <p className="text-xs font-medium text-fg mt-1 leading-relaxed">
                       {bookingResult.preVisitSummary.chiefComplaint}
                     </p>
                   </div>
 
                   {bookingResult.preVisitSummary.suggestedQuestions?.length > 0 && (
-                    <div className="pt-2 border-t border-white/10">
+                    <div className="pt-2 border-t border-line">
                       <p className="text-xs text-secondary font-semibold mb-1 font-heading">
                         Doctor's AI Suggested Diagnostic Inquiries:
                       </p>
                       <ul className="text-xs text-on-surface-variant space-y-1 list-disc list-inside">
                         {bookingResult.preVisitSummary.suggestedQuestions.map((q: string, idx: number) => (
-                          <li key={idx} className="leading-relaxed text-white/90">{q}</li>
+                          <li key={idx} className="leading-relaxed text-fg/90">{q}</li>
                         ))}
                       </ul>
                     </div>
@@ -276,15 +276,15 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
               )}
 
               {/* Calendar Sync Actions */}
-              <div className="glass-card rounded-2xl p-4 space-y-2.5 border border-white/10">
-                <p className="text-xs font-bold text-white font-heading">Add to your personal schedule:</p>
+              <div className="glass-card rounded-2xl p-4 space-y-2.5 border border-line">
+                <p className="text-xs font-bold text-fg font-heading">Add to your personal schedule:</p>
                 <div className="flex flex-wrap gap-2">
                   {bookingResult.calendarLink && (
                     <a
                       href={bookingResult.calendarLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-primary-container hover:bg-primary text-white rounded-xl text-xs font-bold transition-all shadow-neon-cyan font-heading"
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-primary-container hover:bg-primary text-on-primary rounded-xl text-xs font-bold transition-all shadow-neon-cyan font-heading"
                     >
                       <Calendar className="w-4 h-4" />
                       <span>Add to Google Calendar</span>
@@ -293,7 +293,7 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
                   <a
                     href={`/api/appointments/${bookingResult.id}/ics`}
                     download
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-surface-container hover:bg-surface-container-high text-white border border-white/10 rounded-xl text-xs font-semibold transition-all font-heading"
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-surface-container hover:bg-surface-container-high text-fg border border-line rounded-xl text-xs font-semibold transition-all font-heading"
                   >
                     <Download className="w-4 h-4 text-primary" />
                     <span>Download .ICS File</span>
@@ -304,7 +304,7 @@ export const SymptomModal: React.FC<SymptomModalProps> = ({
               <div className="pt-2 flex justify-end">
                 <button
                   onClick={handleClose}
-                  className="px-6 py-2.5 bg-primary-container hover:bg-primary text-white text-xs font-bold rounded-xl transition-all shadow-neon-cyan font-heading"
+                  className="px-6 py-2.5 bg-primary-container hover:bg-primary text-on-primary text-xs font-bold rounded-xl transition-all shadow-neon-cyan font-heading"
                 >
                   Done
                 </button>

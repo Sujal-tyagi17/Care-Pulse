@@ -157,49 +157,49 @@ function verdictCopy(verdict: Verdict, docName: string) {
     VALID: {
       title: `Authentic ${docName}`,
       body: 'Issued and signed by a verified doctor, recorded on the blockchain, and unchanged since.',
-      className: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300',
+      className: 'border-success/40 bg-success-soft text-success',
       Icon: ShieldCheck
     },
     REVOKED: {
       title: `Revoked — do not accept this ${docName}`,
       body: 'It was genuinely issued but has since been revoked (for example, replaced by a corrected version).',
-      className: 'border-red-400/40 bg-red-500/10 text-red-300',
+      className: 'border-danger/40 bg-danger-soft text-danger',
       Icon: ShieldX
     },
     TAMPERED: {
       title: 'Altered document',
       body: 'The content does not match what the doctor signed. Treat it as forged.',
-      className: 'border-red-400/40 bg-red-500/10 text-red-300',
+      className: 'border-danger/40 bg-danger-soft text-danger',
       Icon: ShieldX
     },
     FORGED: {
       title: 'Not issued by a verified doctor',
       body: 'This document was not signed by a doctor the hospital had verified at the time.',
-      className: 'border-red-400/40 bg-red-500/10 text-red-300',
+      className: 'border-danger/40 bg-danger-soft text-danger',
       Icon: ShieldX
     },
     PENDING: {
       title: 'Awaiting blockchain confirmation',
       body: 'Signed by the doctor and queued for the next on-chain batch. Check again shortly.',
-      className: 'border-amber-400/40 bg-amber-500/10 text-amber-300',
+      className: 'border-warning/40 bg-warning-soft text-warning',
       Icon: Clock
     },
     NOT_FOUND: {
       title: 'Not found on the blockchain',
       body: 'No record with this fingerprint was ever issued. If this came from a document, it may have been edited.',
-      className: 'border-red-400/40 bg-red-500/10 text-red-300',
+      className: 'border-danger/40 bg-danger-soft text-danger',
       Icon: ShieldAlert
     },
     UNAVAILABLE: {
       title: 'Could not reach the blockchain',
       body: 'Verification is not possible from this page right now.',
-      className: 'border-slate-400/40 bg-slate-500/10 text-slate-300',
+      className: 'border-line-strong bg-surface-container text-muted',
       Icon: ShieldAlert
     },
     DEMO: {
       title: 'Demo record (not on-chain)',
       body: 'This site is running without a backend. The fingerprint is real, but it was never written to a blockchain.',
-      className: 'border-sky-400/40 bg-sky-500/10 text-sky-300',
+      className: 'border-info/40 bg-info-soft text-info',
       Icon: FlaskConical
     }
   };
@@ -208,9 +208,9 @@ function verdictCopy(verdict: Verdict, docName: string) {
 
 const CheckIcon: React.FC<{ state: CheckState }> = ({ state }) =>
   state === 'pass' ? (
-    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+    <CheckCircle2 className="w-4 h-4 text-success shrink-0 mt-0.5" />
   ) : state === 'fail' ? (
-    <XCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+    <XCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
   ) : (
     <MinusCircle className="w-4 h-4 text-on-surface-variant shrink-0 mt-0.5" />
   );
@@ -220,39 +220,39 @@ const DocumentContents: React.FC<{ document: VerifiableDocument }> = ({ document
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
       <div>
         <p className="text-on-surface-variant">Doctor</p>
-        <p className="text-white font-semibold">{document.issuer.name}</p>
+        <p className="text-fg font-semibold">{document.issuer.name}</p>
         <p className="text-on-surface-variant">{document.issuer.specialization}</p>
       </div>
       <div>
         <p className="text-on-surface-variant">Patient</p>
-        <p className="text-white font-semibold">{document.patient.name}</p>
+        <p className="text-fg font-semibold">{document.patient.name}</p>
       </div>
       <div>
         <p className="text-on-surface-variant">Visit date</p>
-        <p className="text-white font-semibold">{document.appointment.date}</p>
+        <p className="text-fg font-semibold">{document.appointment.date}</p>
       </div>
     </div>
     {isCertificate(document) ? (
       <div className="space-y-2">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant font-heading">Medical certificate</p>
-        <div className="flex gap-3 items-start bg-surface-container/60 border border-white/5 rounded-xl p-3 text-xs">
+        <p className="text-xs font-bold text-on-surface-variant font-heading">Medical certificate</p>
+        <div className="flex gap-3 items-start bg-surface-container/60 border border-line rounded-xl p-3 text-xs">
           <FileBadge className="w-4 h-4 text-tertiary mt-0.5 shrink-0" />
           <div className="space-y-1">
-            <p className="text-white font-semibold">{CERTIFICATE_LABELS[document.certificate.type]}</p>
+            <p className="text-fg font-semibold">{CERTIFICATE_LABELS[document.certificate.type]}</p>
             {formatCertificatePeriod(document.certificate) && <p className="text-on-surface-variant">{formatCertificatePeriod(document.certificate)}</p>}
-            <p className="text-white/90">{document.certificate.remarks}</p>
+            <p className="text-fg/90">{document.certificate.remarks}</p>
           </div>
         </div>
       </div>
     ) : (
       <div className="space-y-2">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant font-heading">Medications</p>
+        <p className="text-xs font-bold text-on-surface-variant font-heading">Medications</p>
         {document.medications.length === 0 && <p className="text-xs text-on-surface-variant">No medication prescribed.</p>}
         {document.medications.map((m, i) => (
-          <div key={i} className="flex gap-3 items-start bg-surface-container/60 border border-white/5 rounded-xl p-3">
+          <div key={i} className="flex gap-3 items-start bg-surface-container/60 border border-line rounded-xl p-3">
             <Pill className="w-4 h-4 text-tertiary mt-0.5 shrink-0" />
             <div className="text-xs">
-              <p className="text-white font-semibold">
+              <p className="text-fg font-semibold">
                 {m.medicineName} <span className="text-on-surface-variant font-normal">· {m.dosage}</span>
               </p>
               <p className="text-on-surface-variant">
@@ -324,24 +324,24 @@ export const VerifyPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-background text-on-background">
-      <header className="border-b border-white/10 bg-surface/80 backdrop-blur-xl">
+      <header className="border-b border-line bg-surface/80 backdrop-blur-xl">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary-container flex items-center justify-center text-white">
+            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center text-on-primary">
               <Activity className="w-5 h-5" />
             </div>
             <div>
               <p className="font-heading font-extrabold text-primary leading-tight">CarePulse</p>
-              <p className="text-[11px] text-on-surface-variant">Document Verification</p>
+              <p className="text-xs text-on-surface-variant">Document Verification</p>
             </div>
           </a>
-          <span className="text-[11px] text-on-surface-variant hidden sm:block">No login required</span>
+          <span className="text-xs text-on-surface-variant hidden sm:block">No login required</span>
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
         <section className="space-y-2">
-          <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-white">Verify a prescription or certificate</h1>
+          <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-fg">Verify a prescription or certificate</h1>
           <p className="text-sm text-on-surface-variant">
             For pharmacies, employers, insurers and patients. Scan the QR code, paste the fingerprint, or upload the downloaded
             file. The check runs against a public blockchain, so you don't have to trust our servers.
@@ -361,7 +361,7 @@ export const VerifyPage: React.FC = () => {
               onChange={(e) => setInput(e.target.value)}
               placeholder="0x… record fingerprint"
               spellCheck={false}
-              className="flex-1 min-w-0 bg-surface-container border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white font-mono placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary"
+              className="flex-1 min-w-0 bg-surface-container border border-line rounded-xl px-3.5 py-2.5 text-sm text-fg font-mono placeholder:text-on-surface-variant/60 focus:outline-none focus:border-primary"
             />
             <button
               type="submit"
@@ -379,12 +379,12 @@ export const VerifyPage: React.FC = () => {
               e.preventDefault();
               onFile(e.dataTransfer.files?.[0]);
             }}
-            className="w-full border border-dashed border-white/15 hover:border-primary/50 rounded-xl px-4 py-3 text-xs text-on-surface-variant flex items-center justify-center gap-2 transition-colors"
+            className="w-full border border-dashed border-line-strong hover:border-primary/50 rounded-xl px-4 py-3 text-xs text-on-surface-variant flex items-center justify-center gap-2 transition-colors"
           >
             <Upload className="w-4 h-4" /> Or drop / choose a verifiable document file (.json)
           </button>
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
-          {error && <p className="text-xs text-red-300">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
         </section>
 
         {loading && (
@@ -407,14 +407,14 @@ export const VerifyPage: React.FC = () => {
 
             {outcome.document && (
               <section
-                className={`glass-card rounded-2xl p-5 space-y-4 text-sm ${outcome.verdict === 'VALID' ? '' : 'border border-red-400/30 opacity-90'}`}
+                className={`glass-card rounded-2xl p-5 space-y-4 text-sm ${outcome.verdict === 'VALID' ? '' : 'border border-danger/40 opacity-90'}`}
               >
                 {outcome.verdict === 'VALID' ? (
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 font-heading flex items-center gap-1">
+                  <p className="text-xs font-bold text-success font-heading flex items-center gap-1">
                     <ShieldCheck className="w-3.5 h-3.5" /> Verified contents
                   </p>
                 ) : (
-                  <p className="text-[11px] font-bold text-red-300 font-heading flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-danger font-heading flex items-center gap-1.5">
                     <ShieldAlert className="w-4 h-4" />
                     {outcome.verdict === 'REVOKED'
                       ? `Contents of a revoked ${docName}. Do not use.`
@@ -426,13 +426,13 @@ export const VerifyPage: React.FC = () => {
             )}
 
             <section className="glass-card rounded-2xl p-5 space-y-3">
-              <h3 className="font-heading font-bold text-white text-sm">Checks performed</h3>
+              <h3 className="font-heading font-bold text-fg text-sm">Checks performed</h3>
               <ul className="space-y-2.5">
                 {outcome.checks.map((c, i) => (
                   <li key={i} className="flex gap-2.5 text-xs">
                     <CheckIcon state={c.state} />
                     <div className="min-w-0">
-                      <p className="text-white">{c.label}</p>
+                      <p className="text-fg">{c.label}</p>
                       {c.detail && <p className="text-on-surface-variant break-all">{c.detail}</p>}
                     </div>
                   </li>
@@ -441,16 +441,16 @@ export const VerifyPage: React.FC = () => {
             </section>
 
             <section className="glass-card rounded-2xl p-5 text-xs space-y-2">
-              <h3 className="font-heading font-bold text-white text-sm">Technical details</h3>
+              <h3 className="font-heading font-bold text-fg text-sm">Technical details</h3>
               <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5">
                 <dt className="text-on-surface-variant">Fingerprint</dt>
-                <dd className="text-white font-mono break-all">{outcome.hash}</dd>
+                <dd className="text-fg font-mono break-all">{outcome.hash}</dd>
                 {outcome.onChain?.exists && (
                   <>
                     <dt className="text-on-surface-variant">Recorded</dt>
-                    <dd className="text-white">{new Date(outcome.onChain.issuedAt * 1000).toLocaleString()}</dd>
+                    <dd className="text-fg">{new Date(outcome.onChain.issuedAt * 1000).toLocaleString()}</dd>
                     <dt className="text-on-surface-variant">Doctor wallet</dt>
-                    <dd className="text-white font-mono break-all">
+                    <dd className="text-fg font-mono break-all">
                       {explorerAddress(outcome.onChain.doctor, explorerBase) ? (
                         <a className="text-primary hover:underline" href={explorerAddress(outcome.onChain.doctor, explorerBase)!} target="_blank" rel="noreferrer">
                           {outcome.onChain.doctor}
@@ -464,7 +464,7 @@ export const VerifyPage: React.FC = () => {
                 {outcome.onChain?.mode === 'BATCH' && (
                   <>
                     <dt className="text-on-surface-variant">Anchoring</dt>
-                    <dd className="text-white">
+                    <dd className="text-fg">
                       Merkle batch #{outcome.onChain.batchId}
                       {outcome.anchor?.proof ? ` · proof of ${outcome.anchor.proof.length} hash${outcome.anchor.proof.length === 1 ? '' : 'es'}` : ''}
                     </dd>
@@ -473,7 +473,7 @@ export const VerifyPage: React.FC = () => {
                 {contract && (
                   <>
                     <dt className="text-on-surface-variant">Registry contract</dt>
-                    <dd className="text-white font-mono break-all">
+                    <dd className="text-fg font-mono break-all">
                       {explorerAddress(contract, explorerBase) ? (
                         <a className="text-primary hover:underline" href={explorerAddress(contract, explorerBase)!} target="_blank" rel="noreferrer">
                           {contract}
@@ -483,7 +483,7 @@ export const VerifyPage: React.FC = () => {
                       )}
                     </dd>
                     <dt className="text-on-surface-variant">Network</dt>
-                    <dd className="text-white">
+                    <dd className="text-fg">
                       {networkName(outcome.chainSource === 'browser' ? chainConfig.chainId : outcome.server?.network?.chainId)}
                     </dd>
                   </>
@@ -491,7 +491,7 @@ export const VerifyPage: React.FC = () => {
                 {outcome.server?.record?.txHash && (
                   <>
                     <dt className="text-on-surface-variant">Transaction</dt>
-                    <dd className="text-white font-mono">
+                    <dd className="text-fg font-mono">
                       {txUrl ? (
                         <a className="text-primary hover:underline inline-flex items-center gap-1" href={txUrl} target="_blank" rel="noreferrer">
                           {shortHash(outcome.server.record.txHash, 10, 8)} <ExternalLink className="w-3 h-3" />

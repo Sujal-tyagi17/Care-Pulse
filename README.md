@@ -15,15 +15,17 @@
 [![ethers.js](https://img.shields.io/badge/ethers.js_v6-2535A0?style=for-the-badge\&logo=ethereum\&logoColor=white)](https://docs.ethers.org/v6/)
 [![Polygon](https://img.shields.io/badge/Polygon_Amoy-7B3FE4?style=for-the-badge\&logo=polygon\&logoColor=white)](https://polygon.technology/)
 
-A full-stack healthcare appointment management platform engineered with modern dark-mode clinical glassmorphism, animated WebGL backgrounds, AI-powered symptom triage, post-visit clinical translations, calendar synchronization, temporary appointment holds, automated medication reminders, and **blockchain-verified prescriptions and medical certificates** that anyone can check without trusting the hospital's servers.
+A full-stack healthcare appointment management platform with a calm Clinical Teal design (light and dark themes), AI-powered symptom triage, post-visit clinical translations, calendar synchronization, temporary appointment holds, automated medication reminders, and **blockchain-verified prescriptions and medical certificates** that anyone can check without trusting the hospital's servers.
 
 ---
 
 ## 🖥️ Application Preview
 
-### 🔐 Authentication & Portal Access
+### 🏠 Landing Page — Prescriptions anyone can verify
 
-![Auth & Landing Page](docs/screenshots/auth-landing.png)
+![Landing page](docs/screenshots/auth-landing.png)
+
+The landing page includes a live tamper demo: edit a sample prescription and watch its SHA-256 fingerprint stop matching the anchored one. Sign-in lives at `/login`, and demo accounts are one click away on the landing page.
 
 ### 👤 Patient Portal — Specialist Discovery & Slot Booking
 
@@ -65,7 +67,7 @@ A full-stack healthcare appointment management platform engineered with modern d
 
 * **Framework:** React 18 with Vite
 * **Language:** TypeScript
-* **Styling:** Tailwind CSS with custom glassmorphism design tokens
+* **Styling:** Tailwind CSS with Clinical Teal design tokens (light and dark themes), Lucide icons
 * **Interactive Background:** Custom WebGL canvas and clinical ECG pulse effects
 * **Icons:** Google Material Symbols Outlined & Lucide React
 * **State Management:** React Context API with JWT-based authentication

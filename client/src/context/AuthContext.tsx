@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { api } from '../api/client';
+import { navigate } from '../lib/router';
 
 interface AuthContextType {
   user: User | null;
@@ -123,6 +124,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('carepulse_user');
     setToken(null);
     setUser(null);
+    navigate('/');
   };
 
   const switchDemoUser = async (role: UserRole) => {

@@ -1,93 +1,115 @@
 import React from 'react';
+import { Activity, LogOut, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { Icon } from './Icon';
+import { linkProps } from '../lib/router';
+import { UserRole } from '../types';
 
 interface SidebarProps {
   activeTab?: string;
   onTabChange?: (tab: string) => void;
   onOpenAIInsights?: () => void;
+  /** Kept for compatibility; navigation is now defined per role below. */
   extraItems?: Array<{ label: string; icon: string }>;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({
-  activeTab = 'Dashboard',
-  onTabChange,
-  onOpenAIInsights,
-  extraItems = []
-}) => {
-  const { user, logout } = useAuth();
+/** Tab keys stay the same as the dashboards' state; labels describe what each role actually finds there. */
+const NAV: Record<UserRole, Array<{ key: string; label: string; short: string; icon: string }>> = {
+  PATIENT: [
+    { key: 'Dashboard', label: 'Home', short: 'Home', icon: 'dashboard' },
+    { key: 'Schedule', label: 'Appointments', short: 'Visits', icon: 'calendar_today' },
+    { key: 'Records', label: 'Medications', short: 'Meds', icon: 'medication' }
+  ],
+  DOCTOR: [
+    { key: 'Dashboard', label: 'Today', short: 'Today', icon: 'dashboard' },
+    { key: 'Schedule', label: 'Schedule', short: 'Schedule', icon: 'calendar_today' },
+    { key: 'Records', label: 'Completed visits', short: 'Visits', icon: 'clinical_notes' },
+    { key: 'Settings', label: 'Profile', short: 'Profile', icon: 'account_circle' }
+  ],
+  ADMIN: [
+    { key: 'Dashboard', label: 'Overview', short: 'Overview', icon: 'dashboard' },
+    { key: 'Schedule', label: 'Doctors and leave', short: 'Doctors', icon: 'group' },
+    { key: 'Records', label: 'Notifications', short: 'Notices', icon: 'mail' },
+    { key: 'Blockchain', label: 'Blockchain', short: 'Chain', icon: 'token' },
+    { key: 'Settings', label: 'Settings', short: 'Settings', icon: 'settings' }
+  ]
+};
 
-  const navItems = [
-    { label: 'Dashboard', icon: 'dashboard' },
-    { label: 'Schedule', icon: 'calendar_today' },
-    { label: 'Records', icon: 'folder_shared' },
-    { label: 'Settings', icon: 'settings' },
-    ...extraItems
-  ];
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab = 'Dashboard', onTabChange, onOpenAIInsights }) => {
+  const { user, logout } = useAuth();
+  const items = NAV[user?.role ?? 'PATIENT'];
+  const isActive = (key: string) => activeTab.toLowerCase() === key.toLowerCase();
 
   return (
-    <nav className="fixed left-0 top-0 h-full flex flex-col z-40 bg-surface/95 backdrop-blur-xl border-r border-outline-variant w-64 shadow-sm hidden md:flex transition-colors duration-300">
-      {/* Header */}
-      <div className="px-6 py-6 flex flex-col gap-1 border-b border-outline-variant">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary-container flex items-center justify-center text-white shadow-neon-cyan shrink-0">
-            <span className="material-symbols-outlined text-2xl font-bold">vital_signs</span>
-          </div>
-          <div>
-            <h1 className="font-heading font-extrabold text-lg text-primary leading-tight">CarePulse</h1>
-            <p className="text-[11px] text-on-surface-variant font-medium">Clinical Intelligence</p>
-          </div>
-        </div>
-      </div>
+    <>
+      {/* Desktop sidebar */}
+      <nav className="fixed left-0 top-0 h-full w-64 z-40 hidden md:flex flex-col bg-surface border-r border-line" aria-label="Main">
+        <a {...linkProps('/')} className="flex items-center gap-2.5 px-5 h-16 border-b border-line">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-on-primary">
+            <Activity className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <span className="font-heading text-lg font-extrabold">CarePulse</span>
+        </a>
 
-      {/* Navigation Links */}
-      <div className="flex-1 px-3 py-4 flex flex-col gap-1.5 overflow-y-auto">
-        {navItems.map(item => {
-          const isActive = activeTab.toLowerCase() === item.label.toLowerCase();
-          return (
+        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+          {items.map((item) => (
             <button
-              key={item.label}
-              onClick={() => onTabChange && onTabChange(item.label)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl font-heading text-xs font-bold transition-all duration-200 text-left ${
-                isActive
-                  ? 'bg-primary/15 border-l-4 border-primary text-primary shadow-sm'
-                  : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high border-l-4 border-transparent'
+              key={item.key}
+              onClick={() => onTabChange?.(item.key)}
+              aria-current={isActive(item.key) ? 'page' : undefined}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-left transition-colors ${
+                isActive(item.key) ? 'bg-primary/10 text-primary' : 'text-muted hover:text-fg hover:bg-surface-container'
               }`}
             >
-              <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>
-                {item.icon}
-              </span>
-              <span>{item.label}</span>
+              <Icon name={item.icon} className="text-lg" />
+              {item.label}
             </button>
-          );
-        })}
-      </div>
-
-      {/* Role & Footer CTA */}
-      <div className="p-4 border-t border-outline-variant space-y-3">
-        <button
-          onClick={onOpenAIInsights}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-surface-container hover:bg-surface-container-high transition-all duration-200 rounded-xl border border-outline-variant group ai-gradient-border"
-        >
-          <span className="material-symbols-outlined text-secondary text-base group-hover:scale-110 transition-transform">
-            auto_awesome
-          </span>
-          <span className="font-heading text-xs font-bold gradient-text-ai">AI Insights</span>
-        </button>
-
-        <div className="bg-surface-container-low p-2.5 rounded-xl border border-outline-variant flex items-center justify-between">
-          <div className="truncate pr-2">
-            <span className="text-[10px] font-bold text-primary block uppercase tracking-wider">{user?.role}</span>
-            <span className="text-xs text-on-surface font-heading font-semibold truncate block">{user?.name}</span>
-          </div>
-          <button
-            onClick={logout}
-            title="Sign Out"
-            className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded-lg transition-colors"
-          >
-            <span className="material-symbols-outlined text-base">logout</span>
-          </button>
+          ))}
         </div>
-      </div>
-    </nav>
+
+        <div className="p-3 border-t border-line space-y-2">
+          <button
+            onClick={onOpenAIInsights}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold text-muted hover:text-primary hover:bg-surface-container transition-colors"
+          >
+            <Sparkles className="h-[18px] w-[18px]" aria-hidden="true" />
+            AI insights
+          </button>
+          <div className="flex items-center justify-between gap-2 rounded-xl bg-surface-container px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{user?.name}</p>
+              <p className="text-xs text-muted">{user?.role === 'ADMIN' ? 'Clinic admin' : user?.role === 'DOCTOR' ? 'Doctor' : 'Patient'}</p>
+            </div>
+            <button onClick={logout} aria-label="Sign out" title="Sign out" className="p-2 rounded-lg text-muted hover:text-danger hover:bg-danger-soft">
+              <LogOut className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Mobile bottom tab bar */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 h-16 bg-surface/95 backdrop-blur border-t border-line flex pb-[env(safe-area-inset-bottom)]"
+        aria-label="Main"
+      >
+        {items.map((item) => (
+          <button
+            key={item.key}
+            onClick={() => onTabChange?.(item.key)}
+            aria-current={isActive(item.key) ? 'page' : undefined}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors ${
+              isActive(item.key) ? 'text-primary' : 'text-muted'
+            }`}
+          >
+            <Icon name={item.icon} className="text-xl" />
+            {item.short}
+          </button>
+        ))}
+        <button onClick={logout} className="flex-1 flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold text-muted" aria-label="Sign out">
+          <LogOut className="h-5 w-5" aria-hidden="true" />
+          Sign out
+        </button>
+      </nav>
+    </>
   );
 };

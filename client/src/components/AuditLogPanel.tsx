@@ -72,18 +72,18 @@ export const AuditLogPanel: React.FC = () => {
       const where = r.firstBreak
         ? `Entry #${r.firstBreak.seq}: ${BREAK_TEXT[r.firstBreak.reason]}.`
         : `History up to entry #${r.checkpointMismatch?.auditSeq} no longer matches what was anchored on-chain in batch #${r.checkpointMismatch?.onChainBatchId}, so it was rewritten.`;
-      return { cls: 'border-red-400/40 bg-red-500/10 text-red-300', Icon: ShieldX, title: 'Audit history has been tampered with', body: where };
+      return { cls: 'border-danger/40 bg-danger-soft text-danger', Icon: ShieldX, title: 'Audit history has been tampered with', body: where };
     }
     if (r.verdict === 'INTACT_NOT_ANCHORED') {
       return {
-        cls: 'border-amber-400/40 bg-amber-500/10 text-amber-300',
+        cls: 'border-warning/40 bg-warning-soft text-warning',
         Icon: ShieldAlert,
         title: 'Hash chain intact, not yet anchored',
         body: 'Every entry links correctly, but no checkpoint is on-chain yet, so a full rewrite could not be detected.'
       };
     }
     return {
-      cls: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300',
+      cls: 'border-success/40 bg-success-soft text-success',
       Icon: ShieldCheck,
       title: 'Audit history intact',
       body: `All ${r.totalEntries} entries verified; ${r.checkpointsVerified} on-chain checkpoint${r.checkpointsVerified === 1 ? '' : 's'} match.${
@@ -93,13 +93,13 @@ export const AuditLogPanel: React.FC = () => {
   };
 
   return (
-    <section className="glass-card rounded-2xl border border-white/10 overflow-hidden">
-      <div className="px-5 py-4 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+    <section className="glass-card rounded-2xl border border-line overflow-hidden">
+      <div className="px-5 py-4 border-b border-line flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
-          <h3 className="font-heading font-extrabold text-sm text-white flex items-center gap-1.5">
+          <h3 className="font-heading font-extrabold text-sm text-fg flex items-center gap-1.5">
             <Link2 className="w-4 h-4 text-primary" /> Tamper-evident audit log
           </h3>
-          <p className="text-[11px] text-on-surface-variant max-w-2xl">
+          <p className="text-xs text-on-surface-variant max-w-2xl">
             Each entry is hash-chained to the one before it, and the latest hash is anchored with every blockchain batch. Only IDs
             and statuses are logged, never medical details, and nothing about individual events goes on-chain.
           </p>
@@ -107,7 +107,7 @@ export const AuditLogPanel: React.FC = () => {
         <div className="flex gap-2 shrink-0">
           <button
             onClick={load}
-            className="px-3 py-2 rounded-xl border border-white/10 text-white text-xs font-heading font-bold flex items-center gap-1.5"
+            className="px-3 py-2 rounded-xl border border-line text-fg text-xs font-heading font-bold flex items-center gap-1.5"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
@@ -121,7 +121,7 @@ export const AuditLogPanel: React.FC = () => {
         </div>
       </div>
 
-      {error && <p className="px-5 pt-4 text-xs text-red-300">{error}</p>}
+      {error && <p className="px-5 pt-4 text-xs text-danger">{error}</p>}
 
       {report &&
         (() => {
@@ -162,7 +162,7 @@ export const AuditLogPanel: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="text-on-surface-variant text-left">
-                <tr className="border-b border-white/5">
+                <tr className="border-b border-line">
                   <th className="py-2 pr-4 font-semibold">#</th>
                   <th className="py-2 pr-4 font-semibold">Event</th>
                   <th className="py-2 pr-4 font-semibold">By</th>
@@ -172,10 +172,10 @@ export const AuditLogPanel: React.FC = () => {
               </thead>
               <tbody>
                 {entries.map((e) => (
-                  <tr key={e.seq} className="border-b border-white/5 last:border-0">
+                  <tr key={e.seq} className="border-b border-line last:border-0">
                     <td className="py-2 pr-4 text-on-surface-variant font-mono">{e.seq}</td>
                     <td className="py-2 pr-4">
-                      <span className="text-white">{EVENT_LABELS[e.eventType] ?? e.eventType}</span>
+                      <span className="text-fg">{EVENT_LABELS[e.eventType] ?? e.eventType}</span>
                       <span className="block text-on-surface-variant font-mono">
                         {e.entityType.toLowerCase()} {shortHash(e.entityId, 8, 4)}
                       </span>

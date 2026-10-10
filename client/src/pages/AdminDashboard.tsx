@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
-import { DoctorListItem, NotificationLogItem } from '../types';
+import { DoctorListItem, NotificationLogItem, BlockchainOverview } from '../types';
 import { AIInsightsModal } from '../components/AIInsightsModal';
 import { Sidebar } from '../components/Sidebar';
 import { TopAppBar } from '../components/TopAppBar';
-import { FluidShaderCanvas } from '../components/FluidShaderCanvas';
 import { BlockchainAdminPanel } from '../components/BlockchainAdminPanel';
+import { Icon } from '../components/Icon';
+import { Avatar } from '../components/Avatar';
+import { NextUpCard, StatusBadge } from '../components/ui';
 
 const DOCTOR_AVATARS: Record<string, string> = {
   'Cardiology': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=400&q=80',
@@ -53,16 +55,19 @@ export const AdminDashboard: React.FC = () => {
   // Notification Logs State
   const [notificationLogs, setNotificationLogs] = useState<NotificationLogItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [chainOverview, setChainOverview] = useState<BlockchainOverview | null>(null);
 
   // Load Admin Data
   const loadData = async () => {
     setLoading(true);
     try {
-      const [analyticsRes, docRes, notifRes] = await Promise.all([
+      const [analyticsRes, docRes, notifRes, chainRes] = await Promise.all([
         api.getAdminAnalytics(),
         api.getDoctors(),
-        api.getNotificationLogs()
+        api.getNotificationLogs(),
+        api.getBlockchainOverview().catch(() => null)
       ]);
+      setChainOverview(chainRes);
       setStats(analyticsRes?.stats || null);
       setRecentApts(analyticsRes?.recentAppointments || []);
       const docs = docRes?.doctors || [];
@@ -153,9 +158,21 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  // Things that need an admin's attention, shown first on the overview.
+  const alerts: Array<{ key: string; icon: string; text: string; action: string; tab: string }> = [];
+  const toReschedule = recentApts.filter((a: { status: string }) => a.status === 'REQUIRES_RESCHEDULE').length;
+  if (toReschedule) alerts.push({ key: 'resched', icon: 'event_repeat', text: `${toReschedule} appointment${toReschedule === 1 ? '' : 's'} need rescheduling after a doctor's leave`, action: 'Review leave', tab: 'Schedule' });
+  const failedMail = notificationLogs.filter((l) => l.status === 'FAILED').length;
+  if (failedMail) alerts.push({ key: 'mail', icon: 'mail', text: `${failedMail} notification${failedMail === 1 ? '' : 's'} failed to send`, action: 'View notifications', tab: 'Records' });
+  if (chainOverview?.enabled) {
+    const unverified = chainOverview.doctors.filter((d) => !d.registeredOnChain).length;
+    if (unverified) alerts.push({ key: 'chain', icon: 'token', text: `${unverified} doctor${unverified === 1 ? ' is' : 's are'} not verified on-chain yet, so their prescriptions can't be anchored`, action: 'Verify doctors', tab: 'Blockchain' });
+    const failedRecords = chainOverview.recordCounts?.FAILED ?? 0;
+    if (failedRecords) alerts.push({ key: 'rec', icon: 'warning', text: `${failedRecords} record${failedRecords === 1 ? '' : 's'} failed to anchor`, action: 'Open blockchain', tab: 'Blockchain' });
+  }
+
   return (
     <div className="bg-background text-on-background min-h-screen relative selection:bg-primary/30 selection:text-primary">
-      <FluidShaderCanvas />
 
       {/* Side Navigation Bar */}
       <Sidebar
@@ -174,14 +191,14 @@ export const AdminDashboard: React.FC = () => {
       />
 
       {/* Main Content */}
-      <main className="fixed top-16 left-0 md:left-64 right-0 bottom-0 overflow-y-auto p-4 md:p-6 lg:p-8 flex flex-col gap-6 max-w-[1440px]">
+      <main className="fixed top-16 left-0 md:left-64 right-0 bottom-16 md:bottom-0 overflow-y-auto [&>*]:shrink-0 p-4 md:p-6 lg:p-8 flex flex-col gap-6 max-w-[1440px]">
         {/* DASHBOARD TAB */}
         {navTab === 'Dashboard' && (
           <>
             {/* Header Section */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
               <div>
-                <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-white mb-1">
+                <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-fg mb-1">
                   Clinic Administration
                 </h1>
                 <p className="text-xs sm:text-sm text-on-surface-variant">
@@ -193,126 +210,135 @@ export const AdminDashboard: React.FC = () => {
                 onClick={() => setShowAddDoctorModal(true)}
                 className="bg-primary hover:bg-primary-container text-on-primary px-5 py-2.5 rounded-xl font-heading font-bold text-xs shadow-neon-cyan hover:-translate-y-0.5 transition-all flex items-center gap-2 border border-primary/50"
               >
-                <span className="material-symbols-outlined text-base">add</span>
+                <Icon name="add" className="text-base" />
                 <span>Add Doctor Profile</span>
               </button>
             </div>
 
             {/* KPI Metrics Grid */}
+            {!loading &&
+              (alerts.length > 0 ? (
+                <NextUpCard tone="warning" label="Needs your attention" icon="warning" title={`${alerts.length} thing${alerts.length === 1 ? '' : 's'} to review`}>
+                  <ul className="mt-3 divide-y divide-warning/20">
+                    {alerts.map((a) => (
+                      <li key={a.key} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 py-2.5">
+                        <span className="flex items-start gap-2 text-sm text-fg">
+                          <Icon name={a.icon} className="text-base text-warning mt-0.5" />
+                          {a.text}
+                        </span>
+                        <button onClick={() => setNavTab(a.tab as typeof navTab)} className="btn btn-secondary py-1.5 text-[13px] shrink-0">
+                          {a.action}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </NextUpCard>
+              ) : (
+                <NextUpCard label="All clear" icon="check_circle" title="Nothing needs your attention" meta={<span>Schedules, notifications and blockchain anchoring are all running normally.</span>} />
+              ))}
+
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Metric 1: Total Doctors */}
-              <div className="glass-card rounded-2xl p-5 lift-hover relative overflow-hidden group border border-white/10">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <span className="material-symbols-outlined text-6xl">stethoscope</span>
-                </div>
+              <div className="glass-card rounded-2xl p-5 lift-hover relative overflow-hidden group border border-line">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center text-primary border border-primary/20">
-                    <span className="material-symbols-outlined text-lg">group</span>
+                    <Icon name="group" className="text-lg" />
                   </div>
-                  <h3 className="text-xs font-heading font-bold text-on-surface-variant uppercase tracking-wider">
+                  <h3 className="text-xs font-heading font-bold text-on-surface-variant">
                     Total Doctors
                   </h3>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-heading font-extrabold text-2xl sm:text-3xl text-white">
+                  <span className="font-heading font-extrabold text-2xl sm:text-3xl text-fg">
                     {stats?.totalDoctors || doctors.length || 0}
                   </span>
-                  <span className="text-[11px] text-tertiary flex items-center font-heading font-bold">
-                    <span className="material-symbols-outlined text-[14px]">arrow_upward</span> Active
+                  <span className="text-xs text-tertiary flex items-center font-heading font-bold">
+                    <Icon name="arrow_upward" className="text-[14px] text-xl" /> Active
                   </span>
                 </div>
               </div>
 
               {/* Metric 2: Scheduled Visits */}
-              <div className="glass-card rounded-2xl p-5 lift-hover relative overflow-hidden group border border-white/10">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <span className="material-symbols-outlined text-6xl">calendar_month</span>
-                </div>
+              <div className="glass-card rounded-2xl p-5 lift-hover relative overflow-hidden group border border-line">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-xl bg-tertiary/15 flex items-center justify-center text-tertiary border border-tertiary/20">
-                    <span className="material-symbols-outlined text-lg">event_available</span>
+                    <Icon name="event_available" className="text-lg" />
                   </div>
-                  <h3 className="text-xs font-heading font-bold text-on-surface-variant uppercase tracking-wider">
+                  <h3 className="text-xs font-heading font-bold text-on-surface-variant">
                     Scheduled Visits
                   </h3>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-heading font-extrabold text-2xl sm:text-3xl text-white">
+                  <span className="font-heading font-extrabold text-2xl sm:text-3xl text-fg">
                     {stats?.totalAppointments || recentApts.length || 0}
                   </span>
-                  <span className="text-[11px] text-tertiary flex items-center font-heading font-bold">
-                    <span className="material-symbols-outlined text-[14px]">arrow_upward</span> {stats?.bookedAppointments || 0} In-Queue
+                  <span className="text-xs text-tertiary flex items-center font-heading font-bold">
+                    <Icon name="arrow_upward" className="text-[14px] text-xl" /> {stats?.bookedAppointments || 0} In-Queue
                   </span>
                 </div>
               </div>
 
               {/* Metric 3: Active Patients */}
-              <div className="glass-card rounded-2xl p-5 lift-hover relative overflow-hidden group border border-white/10">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <span className="material-symbols-outlined text-6xl">personal_injury</span>
-                </div>
+              <div className="glass-card rounded-2xl p-5 lift-hover relative overflow-hidden group border border-line">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-xl bg-secondary/15 flex items-center justify-center text-secondary border border-secondary/20">
-                    <span className="material-symbols-outlined text-lg">vital_signs</span>
+                    <Icon name="vital_signs" className="text-lg" />
                   </div>
-                  <h3 className="text-xs font-heading font-bold text-on-surface-variant uppercase tracking-wider">
+                  <h3 className="text-xs font-heading font-bold text-on-surface-variant">
                     Active Patients
                   </h3>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-heading font-extrabold text-2xl sm:text-3xl text-white">
+                  <span className="font-heading font-extrabold text-2xl sm:text-3xl text-fg">
                     {stats?.totalPatients || 3}
                   </span>
-                  <span className="text-[11px] text-secondary flex items-center font-heading font-bold">
+                  <span className="text-xs text-secondary flex items-center font-heading font-bold">
                     Registered
                   </span>
                 </div>
               </div>
 
               {/* Metric 4: Notifications Sent */}
-              <div className="glass-card rounded-2xl p-5 lift-hover relative overflow-hidden group border border-white/10">
-                <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <span className="material-symbols-outlined text-6xl">mail</span>
-                </div>
+              <div className="glass-card rounded-2xl p-5 lift-hover relative overflow-hidden group border border-line">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center text-primary border border-primary/20">
-                    <span className="material-symbols-outlined text-lg">outgoing_mail</span>
+                    <Icon name="outgoing_mail" className="text-lg" />
                   </div>
-                  <h3 className="text-xs font-heading font-bold text-on-surface-variant uppercase tracking-wider">
+                  <h3 className="text-xs font-heading font-bold text-on-surface-variant">
                     Notifications Sent
                   </h3>
                 </div>
                 <div className="flex items-baseline gap-2">
-                  <span className="font-heading font-extrabold text-2xl sm:text-3xl text-white">
+                  <span className="font-heading font-extrabold text-2xl sm:text-3xl text-fg">
                     {stats?.sentNotifications || notificationLogs.length || 0}
                   </span>
-                  <span className="text-[11px] text-tertiary flex items-center font-heading font-bold">
-                    <span className="material-symbols-outlined text-[14px]">arrow_upward</span> 99.8% Success
+                  <span className="text-xs text-tertiary flex items-center font-heading font-bold">
+                    <Icon name="arrow_upward" className="text-[14px] text-xl" /> 99.8% Success
                   </span>
                 </div>
               </div>
             </section>
 
             {/* Doctor Roster Table Section */}
-            <section className="glass-card rounded-2xl p-6 flex flex-col gap-4 border border-white/10 shadow-glass">
+            <section className="glass-card rounded-2xl p-6 flex flex-col gap-4 border border-line shadow-glass">
               <div className="flex justify-between items-center mb-2">
-                <h2 className="font-heading font-extrabold text-base text-white flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-xl">admin_panel_settings</span>
+                <h2 className="font-heading font-extrabold text-base text-fg flex items-center gap-2">
+                  <Icon name="admin_panel_settings" className="text-primary text-xl" />
                   Doctor Roster &amp; Clinical Directory
                 </h2>
                 <button
                   onClick={loadData}
                   disabled={loading}
-                  className="text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1 font-heading text-xs font-bold bg-surface-container-high/60 px-3 py-1.5 rounded-xl border border-white/5"
+                  className="text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1 font-heading text-xs font-bold bg-surface-container-high/60 px-3 py-1.5 rounded-xl border border-line"
                 >
-                  <span className="material-symbols-outlined text-sm">refresh</span> Refresh
+                  <Icon name="refresh" className="text-sm" /> Refresh
                 </button>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-outline-variant/30 text-on-surface-variant font-heading uppercase tracking-wider">
+                    <tr className="border-b border-outline-variant/30 text-on-surface-variant font-heading">
                       <th className="py-3.5 px-4 font-bold">Doctor</th>
                       <th className="py-3.5 px-4 font-bold">Specialty</th>
                       <th className="py-3.5 px-4 font-bold">Consultation Fee</th>
@@ -327,22 +353,18 @@ export const AdminDashboard: React.FC = () => {
                       return (
                         <tr key={doc.id} className="hover:bg-surface-container-high/30 transition-colors group">
                           <td className="py-3.5 px-4 flex items-center gap-3">
-                            <img
-                              src={avatarUrl}
-                              alt={doc.name}
-                              className="w-9 h-9 rounded-full object-cover border border-outline-variant/50"
-                            />
+                            <Avatar src={avatarUrl} name={doc.name} className="w-9 h-9" />
                             <div>
-                              <p className="font-heading font-bold text-white text-xs">{doc.name}</p>
-                              <p className="text-[10px] text-on-surface-variant">{doc.email}</p>
+                              <p className="font-heading font-bold text-fg text-xs">{doc.name}</p>
+                              <p className="text-xs text-on-surface-variant">{doc.email}</p>
                             </div>
                           </td>
                           <td className="py-3.5 px-4">
-                            <span className="px-2.5 py-0.5 bg-secondary/15 text-secondary rounded-full font-heading text-[10px] font-bold border border-secondary/20">
+                            <span className="px-2.5 py-0.5 bg-secondary/15 text-secondary rounded-full font-heading text-xs font-bold border border-secondary/20">
                               {doc.specialization}
                             </span>
                           </td>
-                          <td className="py-3.5 px-4 font-heading font-bold text-white">
+                          <td className="py-3.5 px-4 font-heading font-bold text-fg">
                             ₹{doc.consultationFee}.00
                           </td>
                           <td className="py-3.5 px-4 text-on-surface-variant">
@@ -350,11 +372,11 @@ export const AdminDashboard: React.FC = () => {
                           </td>
                           <td className="py-3.5 px-4">
                             <div className="flex gap-1">
-                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold">M</span>
-                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold">T</span>
-                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold">W</span>
-                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold">T</span>
-                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-[10px] font-bold">F</span>
+                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-xs font-bold">M</span>
+                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-xs font-bold">T</span>
+                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-xs font-bold">W</span>
+                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-xs font-bold">T</span>
+                              <span className="w-5 h-5 rounded bg-primary/20 text-primary flex items-center justify-center text-xs font-bold">F</span>
                             </div>
                           </td>
                           <td className="py-3.5 px-4 text-right">
@@ -363,7 +385,7 @@ export const AdminDashboard: React.FC = () => {
                               className="p-1.5 text-on-surface-variant hover:text-primary transition-colors rounded-lg hover:bg-surface-container-high/50"
                               title="Edit Profile"
                             >
-                              <span className="material-symbols-outlined text-base">edit</span>
+                              <Icon name="edit" className="text-base" />
                             </button>
                           </td>
                         </tr>
@@ -381,7 +403,7 @@ export const AdminDashboard: React.FC = () => {
           <>
             {/* Header Section */}
             <div>
-              <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-white mb-1">
+              <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-fg mb-1">
                 Doctor Schedules & Leave Management
               </h1>
               <p className="text-xs sm:text-sm text-on-surface-variant">
@@ -391,10 +413,10 @@ export const AdminDashboard: React.FC = () => {
 
             {/* Doctor Leave Conflict Manager Section */}
             <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-6 glass-card p-6 rounded-2xl border border-white/10 space-y-4">
+              <div className="lg:col-span-6 glass-card p-6 rounded-2xl border border-line space-y-4">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-amber-400 text-xl">event_busy</span>
-                  <h3 className="font-heading font-extrabold text-sm text-white">
+                  <Icon name="event_busy" className="text-warning text-xl" />
+                  <h3 className="font-heading font-extrabold text-sm text-fg">
                     Register Doctor Leave &amp; Auto-Resolve Conflicts
                   </h3>
                 </div>
@@ -408,11 +430,11 @@ export const AdminDashboard: React.FC = () => {
                     <select
                       value={selectedDoctorId}
                       onChange={e => setSelectedDoctorId(e.target.value)}
-                      className="w-full p-2.5 bg-surface-container border border-white/10 rounded-xl text-white focus:border-primary focus:outline-none"
+                      className="w-full p-2.5 bg-surface-container border border-line rounded-xl text-fg focus:border-primary focus:outline-none"
                       required
                     >
                       {doctors.map(d => (
-                        <option key={d.id} value={d.id} className="bg-surface-container text-white">
+                        <option key={d.id} value={d.id} className="bg-surface-container text-fg">
                           {d.name} ({d.specialization})
                         </option>
                       ))}
@@ -425,7 +447,7 @@ export const AdminDashboard: React.FC = () => {
                       type="date"
                       value={leaveDate}
                       onChange={e => setLeaveDate(e.target.value)}
-                      className="w-full p-2.5 bg-surface-container border border-white/10 rounded-xl text-white focus:border-primary focus:outline-none"
+                      className="w-full p-2.5 bg-surface-container border border-line rounded-xl text-fg focus:border-primary focus:outline-none"
                       required
                     />
                   </div>
@@ -437,15 +459,15 @@ export const AdminDashboard: React.FC = () => {
                       value={leaveReason}
                       onChange={e => setLeaveReason(e.target.value)}
                       placeholder="e.g. Medical Conference or Approved Personal Leave"
-                      className="w-full p-2.5 bg-surface-container border border-white/10 rounded-xl text-white focus:border-primary focus:outline-none"
+                      className="w-full p-2.5 bg-surface-container border border-line rounded-xl text-fg focus:border-primary focus:outline-none"
                     />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-3 bg-gradient-to-r from-amber-600 to-rose-600 hover:from-amber-700 hover:to-rose-700 text-white font-heading font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3 bg-danger hover:bg-danger/90 text-on-primary font-heading font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
                   >
-                    <span className="material-symbols-outlined text-base">send</span>
+                    <Icon name="send" className="text-base" />
                     <span>Register Leave &amp; Dispatch Patient Alerts</span>
                   </button>
                 </form>
@@ -453,19 +475,19 @@ export const AdminDashboard: React.FC = () => {
                 {leaveResult && (
                   <div className="p-3.5 bg-tertiary-container/20 border border-tertiary/30 rounded-xl text-xs space-y-1">
                     <span className="font-heading font-bold text-tertiary flex items-center gap-1">
-                      <span className="material-symbols-outlined text-base">check_circle</span>
+                      <Icon name="check_circle" className="text-base" />
                       Leave Confirmed
                     </span>
-                    <p className="text-white">
+                    <p className="text-fg">
                       <strong>{leaveResult.affectedAppointmentsCount}</strong> conflicting appointment(s) rescheduled, and <strong>{leaveResult.patientsNotifiedCount}</strong> patient notification email(s) sent.
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="lg:col-span-6 glass-card p-6 rounded-2xl border border-white/10 space-y-4">
-                <h3 className="font-heading font-extrabold text-sm text-white flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-xl">schedule</span>
+              <div className="lg:col-span-6 glass-card p-6 rounded-2xl border border-line space-y-4">
+                <h3 className="font-heading font-extrabold text-sm text-fg flex items-center gap-2">
+                  <Icon name="schedule" className="text-primary text-xl" />
                   Active Leaves for Selected Doctor
                 </h3>
 
@@ -473,10 +495,10 @@ export const AdminDashboard: React.FC = () => {
                   {doctorLeaves.map((l, idx) => (
                     <div
                       key={idx}
-                      className="p-3 bg-surface-container border border-white/5 rounded-xl flex items-center justify-between text-xs"
+                      className="p-3 bg-surface-container border border-line rounded-xl flex items-center justify-between text-xs"
                     >
                       <div>
-                        <span className="font-heading font-bold text-white block">{l.leaveDate}</span>
+                        <span className="font-heading font-bold text-fg block">{l.leaveDate}</span>
                         <span className="text-on-surface-variant">{l.reason || 'Approved Leave'}</span>
                       </div>
                       <button
@@ -484,7 +506,7 @@ export const AdminDashboard: React.FC = () => {
                         className="text-error hover:bg-error/20 p-1.5 rounded-lg transition-colors"
                         title="Remove leave"
                       >
-                        <span className="material-symbols-outlined text-base">delete</span>
+                        <Icon name="delete" className="text-base" />
                       </button>
                     </div>
                   ))}
@@ -504,7 +526,7 @@ export const AdminDashboard: React.FC = () => {
         {navTab === 'Records' && (
           <>
             <div>
-              <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-white mb-1">
+              <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-fg mb-1">
                 Communications & Notification Audit Trail
               </h1>
               <p className="text-xs sm:text-sm text-on-surface-variant">
@@ -512,25 +534,25 @@ export const AdminDashboard: React.FC = () => {
               </p>
             </div>
 
-            <section className="glass-card rounded-2xl p-6 flex flex-col gap-4 border border-white/10 shadow-glass">
+            <section className="glass-card rounded-2xl p-6 flex flex-col gap-4 border border-line shadow-glass">
               <div className="flex justify-between items-center mb-2">
-                <h2 className="font-heading font-extrabold text-base text-white flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-xl">mark_email_read</span>
+                <h2 className="font-heading font-extrabold text-base text-fg flex items-center gap-2">
+                  <Icon name="mark_email_read" className="text-primary text-xl" />
                   System Notification Logs ({notificationLogs.length})
                 </h2>
                 <button
                   onClick={loadData}
                   disabled={loading}
-                  className="text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1 font-heading text-xs font-bold bg-surface-container-high/60 px-3 py-1.5 rounded-xl border border-white/5"
+                  className="text-on-surface-variant hover:text-primary transition-colors flex items-center gap-1 font-heading text-xs font-bold bg-surface-container-high/60 px-3 py-1.5 rounded-xl border border-line"
                 >
-                  <span className="material-symbols-outlined text-sm">refresh</span> Refresh Logs
+                  <Icon name="refresh" className="text-sm" /> Refresh Logs
                 </button>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
-                    <tr className="border-b border-outline-variant/30 text-on-surface-variant font-heading uppercase tracking-wider">
+                    <tr className="border-b border-outline-variant/30 text-on-surface-variant font-heading">
                       <th className="py-3.5 px-4 font-bold">Recipient</th>
                       <th className="py-3.5 px-4 font-bold">Type</th>
                       <th className="py-3.5 px-4 font-bold">Subject</th>
@@ -541,21 +563,13 @@ export const AdminDashboard: React.FC = () => {
                   <tbody className="divide-y divide-outline-variant/20">
                     {notificationLogs.map(log => (
                       <tr key={log.id} className="hover:bg-surface-container-high/30 transition-colors">
-                        <td className="py-3.5 px-4 font-medium text-white">{log.recipientEmail}</td>
+                        <td className="py-3.5 px-4 font-medium text-fg">{log.recipientEmail}</td>
                         <td className="py-3.5 px-4">
-                          <span className="px-2.5 py-0.5 rounded-full font-heading text-[10px] font-bold bg-primary/15 text-primary border border-primary/25">
-                            {log.type}
-                          </span>
+                          <span className="text-xs font-medium text-muted">{log.type.toLowerCase().replace(/_/g, ' ')}</span>
                         </td>
                         <td className="py-3.5 px-4 text-on-surface-variant truncate max-w-xs">{log.subject}</td>
                         <td className="py-3.5 px-4">
-                          <span className={`px-2.5 py-0.5 rounded-full font-heading text-[10px] font-bold ${
-                            log.status === 'SENT'
-                              ? 'bg-tertiary/15 text-tertiary border border-tertiary/30'
-                              : 'bg-amber-500/15 text-amber-300 border border-amber-400/30'
-                          }`}>
-                            {log.status}
-                          </span>
+                          <StatusBadge status={log.status} />
                         </td>
                         <td className="py-3.5 px-4 text-right text-on-surface-variant">
                           {new Date(log.createdAt).toLocaleString()}
@@ -584,7 +598,7 @@ export const AdminDashboard: React.FC = () => {
         {navTab === 'Settings' && (
           <>
             <div>
-              <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-white mb-1">
+              <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-fg mb-1">
                 Clinic Configuration & Policies
               </h1>
               <p className="text-xs sm:text-sm text-on-surface-variant">
@@ -593,46 +607,46 @@ export const AdminDashboard: React.FC = () => {
             </div>
 
             <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="glass-card p-6 rounded-2xl border border-white/10 space-y-4 text-xs">
-                <h3 className="font-heading font-extrabold text-sm text-white flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary text-xl">tune</span>
+              <div className="glass-card p-6 rounded-2xl border border-line space-y-4 text-xs">
+                <h3 className="font-heading font-extrabold text-sm text-fg flex items-center gap-2">
+                  <Icon name="tune" className="text-primary text-xl" />
                   Appointment Engine Policies
                 </h3>
                 <div className="space-y-3">
-                  <div className="flex justify-between items-center p-3 bg-surface-container rounded-xl border border-white/5">
+                  <div className="flex justify-between items-center p-3 bg-surface-container rounded-xl border border-line">
                     <div>
-                      <p className="font-bold text-white">Temporary Slot Hold TTL</p>
-                      <p className="text-on-surface-variant text-[11px]">Automatic lock expiration for incomplete bookings</p>
+                      <p className="font-bold text-fg">Temporary Slot Hold TTL</p>
+                      <p className="text-on-surface-variant text-xs">Automatic lock expiration for incomplete bookings</p>
                     </div>
                     <span className="px-3 py-1 bg-primary/15 text-primary font-bold rounded-lg">10 Minutes</span>
                   </div>
 
-                  <div className="flex justify-between items-center p-3 bg-surface-container rounded-xl border border-white/5">
+                  <div className="flex justify-between items-center p-3 bg-surface-container rounded-xl border border-line">
                     <div>
-                      <p className="font-bold text-white">Dual Calendar Sync</p>
-                      <p className="text-on-surface-variant text-[11px]">Google OAuth + RFC-5545 universal .ICS generator</p>
+                      <p className="font-bold text-fg">Dual Calendar Sync</p>
+                      <p className="text-on-surface-variant text-xs">Google OAuth + RFC-5545 universal .ICS generator</p>
                     </div>
                     <span className="px-3 py-1 bg-tertiary/15 text-tertiary font-bold rounded-lg">Enabled</span>
                   </div>
 
-                  <div className="flex justify-between items-center p-3 bg-surface-container rounded-xl border border-white/5">
+                  <div className="flex justify-between items-center p-3 bg-surface-container rounded-xl border border-line">
                     <div>
-                      <p className="font-bold text-white">AI Clinical Triage Engine</p>
-                      <p className="text-on-surface-variant text-[11px]">Urgency calculation & heuristic rule fallback</p>
+                      <p className="font-bold text-fg">AI Clinical Triage Engine</p>
+                      <p className="text-on-surface-variant text-xs">Urgency calculation & heuristic rule fallback</p>
                     </div>
                     <span className="px-3 py-1 bg-secondary/15 text-secondary font-bold rounded-lg">Active (Gemini/OpenAI)</span>
                   </div>
                 </div>
               </div>
 
-              <div className="glass-card p-6 rounded-2xl border border-white/10 space-y-4 text-xs">
-                <h3 className="font-heading font-extrabold text-sm text-white flex items-center gap-2">
-                  <span className="material-symbols-outlined text-secondary text-xl">local_hospital</span>
+              <div className="glass-card p-6 rounded-2xl border border-line space-y-4 text-xs">
+                <h3 className="font-heading font-extrabold text-sm text-fg flex items-center gap-2">
+                  <Icon name="local_hospital" className="text-secondary text-xl" />
                   Clinic Information
                 </h3>
                 <div className="space-y-3 text-on-surface-variant">
-                  <div className="p-3 bg-surface-container rounded-xl border border-white/5">
-                    <p className="font-bold text-white">CarePulse Multi-Speciality Clinic</p>
+                  <div className="p-3 bg-surface-container rounded-xl border border-line">
+                    <p className="font-bold text-fg">CarePulse Multi-Speciality Clinic</p>
                     <p className="mt-1">Healthcare Tower, Sector 62, Noida, NCR, India</p>
                     <p className="mt-0.5">Emergency Helpline: +91 (0120) 456-7890</p>
                     <p className="mt-0.5">Accreditation: NABH / HIPAA Compliant Practice</p>
@@ -646,17 +660,17 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Add Doctor Modal */}
       {showAddDoctorModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0b1513]/50 backdrop-blur-md animate-fade-in">
           <div className="glass-panel w-full max-w-lg rounded-2xl p-6 shadow-2xl border border-outline-variant/50 relative text-xs">
             <button
               onClick={() => setShowAddDoctorModal(false)}
-              className="absolute top-4 right-4 text-on-surface-variant hover:text-white"
+              className="absolute top-4 right-4 text-on-surface-variant hover:text-fg"
             >
-              <span className="material-symbols-outlined">close</span>
+              <Icon name="close" className="text-xl" />
             </button>
 
-            <h3 className="font-heading font-extrabold text-base text-white mb-4 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">person_add</span>
+            <h3 className="font-heading font-extrabold text-base text-fg mb-4 flex items-center gap-2">
+              <Icon name="person_add" className="text-primary text-xl" />
               Create New Doctor Profile
             </h3>
 
@@ -669,7 +683,7 @@ export const AdminDashboard: React.FC = () => {
                     value={newDoctor.name}
                     onChange={e => setNewDoctor({ ...newDoctor, name: e.target.value })}
                     placeholder="Dr. Gregory House"
-                    className="w-full p-2.5 bg-surface-container border border-white/10 rounded-xl text-white focus:border-primary focus:outline-none"
+                    className="w-full p-2.5 bg-surface-container border border-line rounded-xl text-fg focus:border-primary focus:outline-none"
                     required
                   />
                 </div>
@@ -680,7 +694,7 @@ export const AdminDashboard: React.FC = () => {
                     value={newDoctor.email}
                     onChange={e => setNewDoctor({ ...newDoctor, email: e.target.value })}
                     placeholder="house@carepulse.com"
-                    className="w-full p-2.5 bg-surface-container border border-white/10 rounded-xl text-white focus:border-primary focus:outline-none"
+                    className="w-full p-2.5 bg-surface-container border border-line rounded-xl text-fg focus:border-primary focus:outline-none"
                     required
                   />
                 </div>
@@ -694,7 +708,7 @@ export const AdminDashboard: React.FC = () => {
                     value={newDoctor.specialization}
                     onChange={e => setNewDoctor({ ...newDoctor, specialization: e.target.value })}
                     placeholder="Cardiology"
-                    className="w-full p-2.5 bg-surface-container border border-white/10 rounded-xl text-white focus:border-primary focus:outline-none"
+                    className="w-full p-2.5 bg-surface-container border border-line rounded-xl text-fg focus:border-primary focus:outline-none"
                     required
                   />
                 </div>
@@ -704,7 +718,7 @@ export const AdminDashboard: React.FC = () => {
                     type="number"
                     value={newDoctor.consultationFee}
                     onChange={e => setNewDoctor({ ...newDoctor, consultationFee: Number(e.target.value) })}
-                    className="w-full p-2.5 bg-surface-container border border-white/10 rounded-xl text-white focus:border-primary focus:outline-none"
+                    className="w-full p-2.5 bg-surface-container border border-line rounded-xl text-fg focus:border-primary focus:outline-none"
                   />
                 </div>
               </div>
@@ -716,7 +730,7 @@ export const AdminDashboard: React.FC = () => {
                     type="number"
                     value={newDoctor.slotDurationMinutes}
                     onChange={e => setNewDoctor({ ...newDoctor, slotDurationMinutes: Number(e.target.value) })}
-                    className="w-full p-2.5 bg-surface-container border border-white/10 rounded-xl text-white focus:border-primary focus:outline-none"
+                    className="w-full p-2.5 bg-surface-container border border-line rounded-xl text-fg focus:border-primary focus:outline-none"
                   />
                 </div>
                 <div>
@@ -725,7 +739,7 @@ export const AdminDashboard: React.FC = () => {
                     type="text"
                     value={newDoctor.roomNumber}
                     onChange={e => setNewDoctor({ ...newDoctor, roomNumber: e.target.value })}
-                    className="w-full p-2.5 bg-surface-container border border-white/10 rounded-xl text-white focus:border-primary focus:outline-none"
+                    className="w-full p-2.5 bg-surface-container border border-line rounded-xl text-fg focus:border-primary focus:outline-none"
                   />
                 </div>
               </div>
@@ -734,7 +748,7 @@ export const AdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddDoctorModal(false)}
-                  className="px-4 py-2 text-on-surface-variant hover:text-white rounded-xl"
+                  className="px-4 py-2 text-on-surface-variant hover:text-fg rounded-xl"
                 >
                   Cancel
                 </button>
@@ -752,17 +766,17 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Edit Doctor Profile Modal */}
       {editingDoctor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0b1513]/50 backdrop-blur-md animate-fade-in">
           <div className="glass-panel w-full max-w-lg rounded-2xl p-6 shadow-2xl border border-outline-variant/50 relative text-xs">
             <button
               onClick={() => setEditingDoctor(null)}
-              className="absolute top-4 right-4 text-on-surface-variant hover:text-white"
+              className="absolute top-4 right-4 text-on-surface-variant hover:text-fg"
             >
-              <span className="material-symbols-outlined">close</span>
+              <Icon name="close" className="text-xl" />
             </button>
 
             <h3 className="font-heading font-extrabold text-base text-on-surface mb-5 flex items-center gap-2">
-              <span className="material-symbols-outlined text-primary">manage_accounts</span>
+              <Icon name="manage_accounts" className="text-primary text-xl" />
               Edit Doctor Profile: {editingDoctor.name}
             </h3>
 
@@ -803,7 +817,7 @@ export const AdminDashboard: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setEditingDoctor(null)}
-                className="px-4 py-2 border border-outline-variant/50 text-on-surface-variant hover:text-white rounded-xl"
+                className="px-4 py-2 border border-outline-variant/50 text-on-surface-variant hover:text-fg rounded-xl"
               >
                 Cancel
               </button>

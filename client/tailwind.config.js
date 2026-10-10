@@ -1,69 +1,81 @@
 /** @type {import('tailwindcss').Config} */
+const c = (name) => `rgb(var(--c-${name}) / <alpha-value>)`;
+
 export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
-  darkMode: "class",
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        background: "var(--color-bg)",
-        "on-background": "var(--color-text)",
-        surface: "var(--color-surface)",
-        "surface-dim": "var(--color-surface-dim)",
-        "surface-bright": "var(--color-surface-bright)",
-        "surface-container-lowest": "var(--color-surface-container-lowest)",
-        "surface-container-low": "var(--color-surface-container-low)",
-        "surface-container": "var(--color-surface-container)",
-        "surface-container-high": "var(--color-surface-container-high)",
-        "surface-container-highest": "var(--color-surface-container-highest)",
-        "surface-variant": "var(--color-surface-variant)",
-        "on-surface": "var(--color-text)",
-        "on-surface-variant": "var(--color-text-muted)",
-        outline: "var(--color-outline)",
-        "outline-variant": "var(--color-outline-variant)",
-        primary: "var(--color-primary)",
-        "primary-container": "var(--color-primary-container)",
-        "on-primary": "var(--color-on-primary)",
-        "on-primary-container": "var(--color-on-primary-container)",
-        secondary: "var(--color-secondary)",
-        "secondary-container": "var(--color-secondary-container)",
-        "on-secondary": "var(--color-on-secondary)",
-        "on-secondary-container": "var(--color-on-secondary-container)",
-        tertiary: "var(--color-tertiary)",
-        "tertiary-container": "var(--color-tertiary-container)",
-        "on-tertiary": "var(--color-on-tertiary)",
-        "on-tertiary-container": "var(--color-on-tertiary-container)",
-        error: "#ef4444",
-        "error-container": "var(--color-error-container)",
-        brand: {
-          50: '#f0f9ff',
-          100: '#e0f2fe',
-          200: '#bae6fd',
-          300: '#7dd3fc',
-          400: '#38bdf8',
-          500: '#0ea5e9',
-          600: '#0284c7',
-          700: '#0369a1',
-          800: '#075985',
-          900: '#0c4a6e',
-        }
+        // Clinical Teal tokens (see src/index.css)
+        background: c('bg'),
+        fg: c('fg'),
+        muted: c('muted'),
+        subtle: c('subtle'),
+        line: c('line'),
+        'line-strong': c('line-strong'),
+        'primary-hover': c('primary-hover'),
+        'primary-soft': c('primary-soft'),
+        'on-primary-soft': c('on-primary-soft'),
+        success: { DEFAULT: c('success'), soft: c('success-soft') },
+        warning: { DEFAULT: c('warning'), soft: c('warning-soft') },
+        danger: { DEFAULT: c('danger'), soft: c('danger-soft') },
+        info: { DEFAULT: c('info'), soft: c('info-soft') },
+
+        // Names used across the existing screens, mapped onto the new palette
+        'on-background': c('fg'),
+        surface: c('surface'),
+        'surface-dim': c('surface-container'),
+        'surface-bright': c('surface'),
+        'surface-container-lowest': c('surface-lowest'),
+        'surface-container-low': c('surface-low'),
+        'surface-container': c('surface-container'),
+        'surface-container-high': c('surface-high'),
+        'surface-container-highest': c('surface-highest'),
+        'surface-variant': c('surface-high'),
+        'on-surface': c('fg'),
+        'on-surface-variant': c('muted'),
+        outline: c('outline'),
+        'outline-variant': c('line'),
+        primary: c('primary'),
+        'primary-container': c('primary-soft'),
+        'on-primary': c('on-primary'),
+        'on-primary-container': c('on-primary-soft'),
+        // Secondary used to be a purple "AI" accent; it now stays in the teal family (one accent color).
+        secondary: c('primary'),
+        'secondary-container': c('primary-soft'),
+        'on-secondary': c('on-primary'),
+        'on-secondary-container': c('on-primary-soft'),
+        // Tertiary was used for completed / verified states, so it maps to success green.
+        tertiary: c('success'),
+        'tertiary-container': c('success-soft'),
+        'on-tertiary': c('on-primary'),
+        'on-tertiary-container': c('success'),
+        error: c('danger'),
+        'error-container': c('danger-soft')
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
         heading: ['"Plus Jakarta Sans"', 'Inter', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace']
+      },
+      fontSize: {
+        // Small text bumped from 12px to 13px for readability; body is 14px.
+        xs: ['0.8125rem', { lineHeight: '1.25rem' }]
       },
       boxShadow: {
-        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.25)',
-        'neon-cyan': '0 0 25px -5px rgba(14, 165, 233, 0.4)',
-        'neon-ai': '0 0 25px -5px rgba(139, 92, 246, 0.4)',
+        card: 'var(--shadow-card)',
+        pop: 'var(--shadow-pop)',
+        // Neon glows from the old theme are neutralised rather than hunted down one by one.
+        'neon-cyan': 'none',
+        'neon-ai': 'none',
+        glass: 'var(--shadow-card)'
       },
       borderRadius: {
         '2xl': '1rem',
-        '3xl': '1.5rem',
+        '3xl': '1.5rem'
       }
-    },
+    }
   },
-  plugins: [],
-}
+  plugins: []
+};
