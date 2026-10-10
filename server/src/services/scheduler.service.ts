@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { prisma } from '../db.js';
 import { sendEmailNotification, retryFailedNotifications, getMedicationReminderHtml } from './email.service.js';
-import { processPendingRecords, getChain } from './blockchain.service.js';
+import { processPendingRecords, runBatchCycle, getChain } from './blockchain.service.js';
 
 /**
  * Background Scheduler Service
@@ -10,7 +10,7 @@ import { processPendingRecords, getChain } from './blockchain.service.js';
  * 2. Medication reminders based on prescription frequency
  * 3. Appointment reminders (24h and 1h prior)
  * 4. Failed email retries with exponential backoff
- * 5. Blockchain anchoring retries for medical records
+ * 5. Blockchain anchoring: Merkle batches, audit checkpoints, single-record retries
  */
 
 export function startBackgroundSchedulers() {
@@ -113,10 +113,11 @@ export function startBackgroundSchedulers() {
     if (anchoringRunning) return;
     anchoringRunning = true;
     try {
-      const processed = await processPendingRecords();
+      const processed = await processPendingRecords(); // single-transaction mode
       if (processed > 0) {
         console.log(`[Scheduler] Processed ${processed} pending blockchain record(s).`);
       }
+      await runBatchCycle(); // Merkle batches + audit checkpoints, every BLOCKCHAIN_BATCH_INTERVAL_MINUTES
     } catch (err) {
       console.error('[Scheduler] Error in blockchain anchoring worker:', (err as Error).message);
     } finally {

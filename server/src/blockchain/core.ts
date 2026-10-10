@@ -6,11 +6,40 @@
  */
 import { createHash, randomBytes } from 'crypto';
 import { Contract, JsonRpcProvider, Wallet, NonceManager, keccak256, AbiCoder, getAddress, TypedDataDomain } from 'ethers';
+import { StandardMerkleTree } from '@openzeppelin/merkle-tree';
 import abi from './MedicalRegistry.abi.json' with { type: 'json' };
 
 export const RECORD_TYPES = { PRESCRIPTION: 0, CLINICAL_SUMMARY: 1, MEDICAL_CERTIFICATE: 2 } as const;
 export type RecordTypeName = keyof typeof RECORD_TYPES;
 export const RECORD_TYPE_NAMES = Object.keys(RECORD_TYPES) as RecordTypeName[];
+
+export const BATCH_CHECKS = [
+  'VALID',
+  'UNKNOWN_BATCH',
+  'NOT_IN_BATCH',
+  'SIGNER_NOT_REGISTERED',
+  'DOCTOR_SUSPENDED_AT_ANCHOR_TIME',
+  'SIGNATURE_EXPIRED_BEFORE_ANCHOR'
+] as const;
+export type BatchCheck = (typeof BATCH_CHECKS)[number];
+
+/** Leaf encoding shared with the contract's batchLeaf(): (recordHash, recordType, doctor). */
+export const LEAF_ENCODING = ['bytes32', 'uint8', 'address'];
+
+export interface BatchLeafInput {
+  recordHash: string;
+  recordType: RecordTypeName;
+  doctor: string;
+}
+
+/** Builds an OpenZeppelin StandardMerkleTree and returns the root plus one proof per input, in order. */
+export function buildBatchTree(leaves: BatchLeafInput[]): { root: string; proofs: string[][] } {
+  if (leaves.length === 0) throw new Error('Cannot build an empty batch');
+  const values = leaves.map((l) => [l.recordHash, RECORD_TYPES[l.recordType], getAddress(l.doctor)]);
+  const tree = StandardMerkleTree.of(values, LEAF_ENCODING);
+  // tree.getProof(i) takes the index into the original values array
+  return { root: tree.root, proofs: values.map((_, i) => tree.getProof(i)) };
+}
 
 export const EIP712_NAME = 'CarePulse MedicalRegistry';
 export const EIP712_VERSION = '1';
@@ -126,6 +155,9 @@ export interface OnChainRecord {
   doctorCurrentlyActive: boolean;
   issuedAt: number;
   recordType: RecordTypeName;
+  mode: 'SINGLE' | 'BATCH';
+  batchId?: number;
+  batchCheck?: BatchCheck;
 }
 
 export class RegistryClient {
@@ -157,16 +189,23 @@ export class RegistryClient {
     return run;
   }
 
-  private async send(method: string, args: unknown[]): Promise<{ txHash: string; blockNumber: number }> {
+  private async send(
+    method: string,
+    args: unknown[]
+  ): Promise<{ txHash: string; blockNumber: number; logs: ReadonlyArray<{ topics: ReadonlyArray<string>; data: string }> }> {
     return this.enqueue(async () => {
-      try {
-        const tx = await this.contract[method](...args);
-        const receipt = await tx.wait(this.config.confirmations ?? 1);
-        if (!receipt || receipt.status !== 1) throw new Error(`Transaction ${tx.hash} reverted`);
-        return { txHash: tx.hash as string, blockNumber: Number(receipt.blockNumber) };
-      } catch (err) {
-        this.sender.reset(); // resync nonce after a failed send
-        throw new Error(decodeRevert(this.contract, err));
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const tx = await this.contract[method](...args);
+          const receipt = await tx.wait(this.config.confirmations ?? 1);
+          if (!receipt || receipt.status !== 1) throw new Error(`Transaction ${tx.hash} reverted`);
+          return { txHash: tx.hash as string, blockNumber: Number(receipt.blockNumber), logs: receipt.logs };
+        } catch (err) {
+          this.sender.reset(); // resync nonce after a failed send
+          // Another process used the relayer wallet (second instance, manual tx): retry once with a fresh nonce.
+          if (attempt === 1 && isNonceError(err)) continue;
+          throw new Error(decodeRevert(this.contract, err));
+        }
       }
     });
   }
@@ -187,6 +226,60 @@ export class RegistryClient {
     return this.send('revokeRecord', [recordHash, deadline, signature]);
   }
 
+  /** Anchors a Merkle root + audit checkpoint; returns the on-chain batch id from the BatchAnchored event. */
+  async anchorBatch(root: string, leafCount: number, auditHead: string, auditSeq: number) {
+    const res = await this.send('anchorBatch', [root, leafCount, auditHead, auditSeq]);
+    let batchId: number | null = null;
+    for (const log of res.logs) {
+      try {
+        const parsed = this.contract.interface.parseLog({ topics: [...log.topics], data: log.data });
+        if (parsed?.name === 'BatchAnchored') batchId = Number(parsed.args.batchId);
+      } catch {
+        /* not our event */
+      }
+    }
+    if (batchId === null) throw new Error(`BatchAnchored event missing from tx ${res.txHash}`);
+    return { txHash: res.txHash, blockNumber: res.blockNumber, batchId };
+  }
+
+  async revokeBatched(
+    recordHash: string,
+    recordType: RecordTypeName,
+    doctor: string,
+    batchId: number,
+    proof: string[],
+    deadline: number,
+    signature: string
+  ) {
+    return this.send('revokeBatchedRecord', [recordHash, RECORD_TYPES[recordType], doctor, batchId, proof, deadline, signature]);
+  }
+
+  async verifyBatched(
+    recordHash: string,
+    recordType: RecordTypeName,
+    deadline: number,
+    signature: string,
+    batchId: number,
+    proof: string[]
+  ): Promise<OnChainRecord> {
+    return readBatchedRecord(this.contract, { recordHash, recordType, deadline, signature, batchId, proof });
+  }
+
+  async batchCount(): Promise<number> {
+    return Number(await this.contract.batchCount());
+  }
+
+  async getBatch(batchId: number) {
+    const b = await this.contract.getBatch(batchId);
+    return {
+      root: b.root as string,
+      auditHead: b.auditHead as string,
+      auditSeq: Number(b.auditSeq),
+      anchoredAt: Number(b.anchoredAt),
+      leafCount: Number(b.leafCount)
+    };
+  }
+
   async getDoctor(address: string) {
     const d = await this.contract.getDoctor(address);
     return {
@@ -203,9 +296,11 @@ export class RegistryClient {
   }
 
   async status() {
-    const [balance, totalRecords, doctorCount, owner, block] = await Promise.all([
+    const [balance, totalRecords, totalBatched, batches, doctorCount, owner, block] = await Promise.all([
       this.provider.getBalance(this.relayer.address),
       this.contract.totalRecords(),
+      this.contract.totalBatchedRecords(),
+      this.contract.batchCount(),
       this.contract.doctorCount(),
       this.contract.owner(),
       this.provider.getBlockNumber()
@@ -214,7 +309,8 @@ export class RegistryClient {
       relayerAddress: this.relayer.address,
       relayerBalanceWei: balance.toString(),
       relayerIsOwner: getAddress(owner) === this.relayer.address,
-      totalRecords: Number(totalRecords),
+      totalRecords: Number(totalRecords) + Number(totalBatched),
+      totalBatches: Number(batches),
       registeredDoctors: Number(doctorCount),
       latestBlock: block
     };
@@ -231,8 +327,42 @@ export async function readRecord(contract: Contract, recordHash: string): Promis
     doctorSpecialization: r.doctorSpecialization,
     doctorCurrentlyActive: r.doctorCurrentlyActive,
     issuedAt: Number(r.issuedAt),
-    recordType: RECORD_TYPE_NAMES[Number(r.recordType)] ?? 'PRESCRIPTION'
+    recordType: RECORD_TYPE_NAMES[Number(r.recordType)] ?? 'PRESCRIPTION',
+    mode: 'SINGLE'
   };
+}
+
+export interface BatchedAnchorInput {
+  recordHash: string;
+  recordType: RecordTypeName;
+  deadline: number;
+  signature: string;
+  batchId: number;
+  proof: string[];
+}
+
+/** Reads a batched record. `exists` is true only when proof, signature and doctor checks all pass. */
+export async function readBatchedRecord(contract: Contract, a: BatchedAnchorInput): Promise<OnChainRecord> {
+  const v = await contract.verifyBatchedRecord(a.recordHash, RECORD_TYPES[a.recordType], a.deadline, a.signature, a.batchId, a.proof);
+  const batchCheck = BATCH_CHECKS[Number(v.check)] ?? 'NOT_IN_BATCH';
+  return {
+    exists: batchCheck === 'VALID',
+    revoked: v.revoked,
+    doctor: v.doctor,
+    doctorName: v.doctorName,
+    doctorSpecialization: v.doctorSpecialization,
+    doctorCurrentlyActive: v.doctorCurrentlyActive,
+    issuedAt: Number(v.anchoredAt),
+    recordType: a.recordType,
+    mode: 'BATCH',
+    batchId: a.batchId,
+    batchCheck
+  };
+}
+
+function isNonceError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  return e?.code === 'NONCE_EXPIRED' || /nonce (has already been used|too low)/i.test(e?.message ?? '');
 }
 
 /** Turn ethers errors (including custom Solidity errors) into a readable message. */

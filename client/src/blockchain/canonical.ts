@@ -4,6 +4,8 @@
  * server integration test), otherwise genuine documents would fail verification.
  */
 
+import type { AnchorBundle, VerifiableCertificate, VerifiableDocument, VerifiableFile } from '../types';
+
 /** Deterministic JSON: object keys sorted recursively, no whitespace. */
 export function canonicalize(value: unknown): string {
   if (value === null || typeof value !== 'object') {
@@ -37,4 +39,29 @@ export async function sha256Hex(text: string): Promise<string> {
 export async function fingerprintOf(document: unknown): Promise<string> {
   const parsed = typeof document === 'string' ? JSON.parse(document) : document;
   return sha256Hex(canonicalize(parsed));
+}
+
+// ---------------------------------------------------------------------------
+// Verifiable files: either a bare signed document (older downloads) or
+// { carepulseVerifiable: 1, document, anchor } with the on-chain proof bundled in.
+// ---------------------------------------------------------------------------
+
+export function parseVerifiableFile(text: string): { document: VerifiableDocument; anchor: AnchorBundle | null } {
+  const parsed = JSON.parse(text);
+  if (parsed && parsed.carepulseVerifiable === 1 && parsed.document) {
+    return { document: parsed.document, anchor: parsed.anchor ?? null };
+  }
+  if (parsed && typeof parsed.schema === 'string' && parsed.schema.startsWith('carepulse.')) {
+    return { document: parsed, anchor: null };
+  }
+  throw new Error('Not a CarePulse verifiable document');
+}
+
+export function buildVerifiableFile(canonicalDocument: string, anchor: AnchorBundle | null): string {
+  const file: VerifiableFile = { carepulseVerifiable: 1, document: JSON.parse(canonicalDocument), anchor };
+  return JSON.stringify(file, null, 2);
+}
+
+export function isCertificate(doc: VerifiableDocument | null | undefined): doc is VerifiableCertificate {
+  return !!doc && 'certificate' in doc;
 }

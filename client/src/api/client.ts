@@ -6,7 +6,10 @@ import {
   MedicationReminderItem,
   PrescriptionItem,
   VerificationResult,
-  BlockchainOverview
+  BlockchainOverview,
+  CertificateDetails,
+  AuditEntry,
+  AuditIntegrityReport
 } from '../types';
 import { MockDataStore } from './mockData';
 
@@ -18,6 +21,12 @@ function getHeaders(): HeadersInit {
     'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {})
   };
+}
+
+/** True when the backend isn't there at all (standalone demo), as opposed to a real API error. */
+function isBackendUnavailable(err: unknown): boolean {
+  const msg = (err as Error)?.message ?? '';
+  return err instanceof TypeError || msg.includes('Non-JSON response') || msg.includes('Failed to fetch');
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
@@ -431,6 +440,43 @@ export const api = {
       headers: getHeaders(),
       body: JSON.stringify({ active })
     });
+    return handleResponse(res);
+  },
+
+  async issueCertificate(appointmentId: string, details: CertificateDetails): Promise<any> {
+    try {
+      const res = await fetch(`${API_BASE}/consultations/${appointmentId}/certificate`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(details)
+      });
+      return await handleResponse(res);
+    } catch (err) {
+      if (!isBackendUnavailable(err)) throw err;
+      return { certificate: await MockDataStore.issueDemoCertificate(appointmentId, details) };
+    }
+  },
+
+  async anchorBatchNow(): Promise<{ status: string; reason?: string; records?: number; onChainBatchId?: number; txHash?: string }> {
+    const res = await fetch(`${API_BASE}/admin/blockchain/anchor-now`, { method: 'POST', headers: getHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && data.status !== 'FAILED') throw new Error(data.message || `Request failed with status ${res.status}`);
+    return data;
+  },
+
+  async getAuditEntries(limit = 30, beforeSeq?: number): Promise<{ entries: AuditEntry[]; demo?: boolean }> {
+    try {
+      const q = new URLSearchParams({ limit: String(limit), ...(beforeSeq ? { before: String(beforeSeq) } : {}) });
+      const res = await fetch(`${API_BASE}/admin/audit?${q}`, { headers: getHeaders() });
+      return await handleResponse(res);
+    } catch (err) {
+      if (!isBackendUnavailable(err)) throw err;
+      return { entries: [], demo: true };
+    }
+  },
+
+  async verifyAuditLog(): Promise<{ report: AuditIntegrityReport }> {
+    const res = await fetch(`${API_BASE}/admin/audit/verify`, { headers: getHeaders() });
     return handleResponse(res);
   }
 };

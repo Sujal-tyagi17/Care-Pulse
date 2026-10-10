@@ -8,7 +8,8 @@ import { generatePreVisitSummary } from '../services/llm.service.js';
 import { sendEmailNotification, getBookingConfirmationHtml, formatDoctorName } from '../services/email.service.js';
 import { syncGoogleCalendarEvent, generateIcsContent, deleteGoogleCalendarEvent } from '../services/calendar.service.js';
 import { getISTDateAndTime } from './doctor.routes.js';
-import { toRecordSummary } from '../services/blockchain.service.js';
+import { toRecordSummary, toCertificateSummary } from '../services/blockchain.service.js';
+import { logAudit } from '../services/audit.service.js';
 
 const router = Router();
 
@@ -243,6 +244,14 @@ router.post('/book', requireAuth, async (req: AuthRequest, res) => {
       });
     }
 
+    await logAudit({
+      eventType: 'APPOINTMENT_BOOKED',
+      entityType: 'APPOINTMENT',
+      entityId: appointmentResult.id,
+      actor: { id: req.user!.id, role: req.user!.role },
+      data: { doctorId: appointmentResult.doctor.id, date: data.date, startTime: data.startTime }
+    });
+
     // 7. Dispatch Confirmation Emails
     const emailHtmlPatient = getBookingConfirmationHtml({
       patientName: appointmentResult.patient.name,
@@ -339,7 +348,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
         preVisitSummary: true,
         postVisitSummary: true,
         medicationReminders: true,
-        blockchainRecords: { where: { isCurrent: true }, take: 1 }
+        blockchainRecords: { where: { isCurrent: true } }
       },
       orderBy: [{ date: 'desc' }, { startTime: 'desc' }]
     });
@@ -372,7 +381,14 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
         followUpSteps: apt.postVisitSummary.followUpSteps
       } : null,
       medicationRemindersCount: apt.medicationReminders.length,
-      blockchainRecord: apt.blockchainRecords[0] ? toRecordSummary(apt.blockchainRecords[0]) : null
+      blockchainRecord: (() => {
+        const rx = apt.blockchainRecords.find((r) => r.recordType === 'PRESCRIPTION');
+        return rx ? toRecordSummary(rx) : null;
+      })(),
+      certificate: (() => {
+        const cert = apt.blockchainRecords.find((r) => r.recordType === 'MEDICAL_CERTIFICATE');
+        return cert ? toCertificateSummary(cert) : null;
+      })()
     }));
 
     return res.json({ success: true, appointments: formatted });
@@ -416,6 +432,14 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
     if (apt.googleCalendarEventId) {
       await deleteGoogleCalendarEvent(apt.googleCalendarEventId);
     }
+
+    await logAudit({
+      eventType: 'APPOINTMENT_CANCELLED',
+      entityType: 'APPOINTMENT',
+      entityId: id,
+      actor: { id: userId, role: userRole },
+      data: { previousStatus: apt.status }
+    });
 
     return res.json({ success: true, message: 'Appointment cancelled successfully.', appointment: updated });
   } catch (err: any) {

@@ -13,10 +13,11 @@ import {
   Pill,
   FlaskConical,
   Loader2,
-  Activity
+  Activity,
+  FileBadge
 } from 'lucide-react';
 import { api } from '../api/client';
-import { fingerprintOf, canonicalize, sha256Hex } from '../blockchain/canonical';
+import { canonicalize, sha256Hex, parseVerifiableFile, isCertificate } from '../blockchain/canonical';
 import {
   chainConfig,
   explorerAddress,
@@ -24,18 +25,22 @@ import {
   isDirectChainConfigured,
   networkName,
   readRecordDirect,
+  readBatchedRecordDirect,
   shortHash
 } from '../blockchain/chain';
-import { OnChainRecord, VerifiablePrescription, VerificationResult } from '../types';
+import { AnchorBundle, BatchCheck, OnChainRecord, VerifiableDocument, VerificationResult } from '../types';
+import { CERTIFICATE_LABELS, formatCertificatePeriod } from '../components/certificateText';
 
-type Verdict = 'VALID' | 'REVOKED' | 'TAMPERED' | 'PENDING' | 'NOT_FOUND' | 'UNAVAILABLE' | 'DEMO';
+type Verdict = 'VALID' | 'REVOKED' | 'TAMPERED' | 'FORGED' | 'PENDING' | 'NOT_FOUND' | 'UNAVAILABLE' | 'DEMO';
 type CheckState = 'pass' | 'fail' | 'skip';
 
 interface Outcome {
   hash: string;
   verdict: Verdict;
-  payload: VerifiablePrescription | null;
+  verdictDetail?: string;
+  document: VerifiableDocument | null;
   onChain: OnChainRecord | null;
+  anchor: AnchorBundle | null;
   chainSource: 'browser' | 'server' | null;
   server: VerificationResult | null;
   checks: Array<{ label: string; state: CheckState; detail?: string }>;
@@ -44,24 +49,42 @@ interface Outcome {
 
 const HASH_RE = /^0x[0-9a-fA-F]{64}$/;
 
-async function runVerification(hash: string, uploadedPayload: VerifiablePrescription | null): Promise<Outcome> {
+const BATCH_FAILURE_TEXT: Record<Exclude<BatchCheck, 'VALID'>, { verdict: Verdict; detail: string }> = {
+  UNKNOWN_BATCH: { verdict: 'NOT_FOUND', detail: 'The referenced batch does not exist on this blockchain.' },
+  NOT_IN_BATCH: { verdict: 'TAMPERED', detail: 'The content or signature does not match what was anchored in the batch.' },
+  SIGNER_NOT_REGISTERED: { verdict: 'FORGED', detail: 'It was signed by a key that is not a hospital-verified doctor.' },
+  DOCTOR_SUSPENDED_AT_ANCHOR_TIME: { verdict: 'FORGED', detail: 'The doctor was suspended when this was recorded.' },
+  SIGNATURE_EXPIRED_BEFORE_ANCHOR: { verdict: 'TAMPERED', detail: "The doctor's signature had expired before it was recorded." }
+};
+
+async function runVerification(hash: string, uploaded: { document: VerifiableDocument; anchor: AnchorBundle | null } | null): Promise<Outcome> {
   const normalized = hash.toLowerCase();
   const checks: Outcome['checks'] = [];
 
-  const [serverRes, directRes] = await Promise.allSettled([
-    api.verifyRecord(normalized),
-    isDirectChainConfigured() ? readRecordDirect(normalized) : Promise.reject(new Error('not configured'))
-  ]);
-  const server = serverRes.status === 'fulfilled' ? serverRes.value : null;
+  const server = await api.verifyRecord(normalized).catch(() => null);
+  // Proof bundle: from the uploaded file (works with no server at all), else from the server.
+  const anchor = uploaded?.anchor ?? server?.anchor ?? null;
+
+  let direct: OnChainRecord | null = null;
+  if (isDirectChainConfigured()) {
+    try {
+      direct =
+        anchor?.mode === 'BATCH' && anchor.proof && anchor.batchId !== null
+          ? await readBatchedRecordDirect(normalized, anchor)
+          : await readRecordDirect(normalized);
+    } catch {
+      direct = null;
+    }
+  }
 
   // 1. The document itself: uploaded by the user, or served by CarePulse and re-hashed here.
-  let payload: VerifiablePrescription | null = uploadedPayload;
-  let documentOk: boolean | null = uploadedPayload ? true : null;
-  if (!payload && server?.record?.payload) {
-    payload = server.record.payload;
-    documentOk = (await sha256Hex(canonicalize(payload))) === normalized;
+  let document: VerifiableDocument | null = uploaded?.document ?? null;
+  let documentOk: boolean | null = uploaded ? true : null;
+  if (!document && server?.record?.payload) {
+    document = server.record.payload;
+    documentOk = (await sha256Hex(canonicalize(document))) === normalized;
   }
-  if (uploadedPayload) {
+  if (uploaded) {
     checks.push({ label: 'Fingerprint computed from your file in this browser', state: 'pass' });
   } else if (documentOk !== null) {
     checks.push({
@@ -74,26 +97,28 @@ async function runVerification(hash: string, uploadedPayload: VerifiablePrescrip
   }
 
   // 2. The blockchain: read directly from the browser when possible, otherwise via the server.
-  let onChain: OnChainRecord | null = null;
-  let chainSource: Outcome['chainSource'] = null;
-  if (directRes.status === 'fulfilled') {
-    onChain = directRes.value;
-    chainSource = 'browser';
-  } else if (server?.onChain) {
-    onChain = server.onChain;
-    chainSource = 'server';
-  }
+  const onChain = direct ?? server?.onChain ?? null;
+  const chainSource: Outcome['chainSource'] = direct ? 'browser' : onChain ? 'server' : null;
+  const via = chainSource === 'browser' ? 'checked directly from your browser' : 'via CarePulse server';
+  let batchFailure: { verdict: Verdict; detail: string } | null = null;
 
   if (onChain) {
-    checks.push({
-      label: chainSource === 'browser' ? 'Fingerprint found on the blockchain (checked directly from your browser)' : 'Fingerprint found on the blockchain (via CarePulse server)',
-      state: onChain.exists ? 'pass' : 'fail'
-    });
+    if (onChain.mode === 'BATCH') {
+      const ok = onChain.batchCheck === 'VALID';
+      checks.push({
+        label: `Included in on-chain batch #${onChain.batchId} — Merkle proof and doctor signature verified (${via})`,
+        state: ok ? 'pass' : 'fail',
+        detail: ok ? undefined : BATCH_FAILURE_TEXT[onChain.batchCheck as Exclude<BatchCheck, 'VALID'>]?.detail
+      });
+      if (!ok) batchFailure = BATCH_FAILURE_TEXT[onChain.batchCheck as Exclude<BatchCheck, 'VALID'>] ?? BATCH_FAILURE_TEXT.NOT_IN_BATCH;
+    } else {
+      checks.push({ label: `Fingerprint found on the blockchain (${via})`, state: onChain.exists ? 'pass' : 'fail' });
+    }
     if (onChain.exists) {
       checks.push({ label: `Signed by a hospital-verified doctor: ${onChain.doctorName}`, state: 'pass', detail: onChain.doctor });
       checks.push({ label: 'Not revoked by the doctor or hospital', state: onChain.revoked ? 'fail' : 'pass' });
-      if (payload) {
-        const issuerMatches = payload.issuer.wallet.toLowerCase() === onChain.doctor.toLowerCase();
+      if (document) {
+        const issuerMatches = document.issuer.wallet.toLowerCase() === onChain.doctor.toLowerCase();
         checks.push({ label: 'Doctor named in the document is the one who signed it', state: issuerMatches ? 'pass' : 'fail' });
         if (!issuerMatches) documentOk = false;
       }
@@ -110,61 +135,76 @@ async function runVerification(hash: string, uploadedPayload: VerifiablePrescrip
   }
 
   let verdict: Verdict;
+  let verdictDetail: string | undefined;
   if (documentOk === false) verdict = 'TAMPERED';
-  else if (onChain?.exists && onChain.revoked) verdict = 'REVOKED';
+  else if (batchFailure) {
+    verdict = batchFailure.verdict;
+    verdictDetail = batchFailure.detail;
+  } else if (onChain?.exists && onChain.revoked) verdict = 'REVOKED';
   else if (onChain?.exists) verdict = 'VALID';
   else if (server?.demo) verdict = 'DEMO';
-  else if (server?.verdict === 'PENDING') verdict = 'PENDING';
-  else if (onChain) verdict = 'NOT_FOUND';
+  else if (server?.verdict === 'PENDING') {
+    verdict = 'PENDING';
+    if (server.nextBatchAt) verdictDetail = `Expected on-chain by about ${new Date(server.nextBatchAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+  } else if (onChain) verdict = 'NOT_FOUND';
   else verdict = 'UNAVAILABLE';
 
-  return { hash: normalized, verdict, payload, onChain, chainSource, server, checks, note: server?.chainError ?? undefined };
+  return { hash: normalized, verdict, verdictDetail, document, onChain, anchor, chainSource, server, checks, note: server?.chainError ?? undefined };
 }
 
-const VERDICTS: Record<Verdict, { title: string; body: string; className: string; Icon: React.ElementType }> = {
-  VALID: {
-    title: 'Authentic prescription',
-    body: 'Issued and signed by a verified doctor, recorded on the blockchain, and unchanged since.',
-    className: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300',
-    Icon: ShieldCheck
-  },
-  REVOKED: {
-    title: 'Revoked — do not dispense',
-    body: 'This prescription was genuinely issued but has since been revoked (for example, replaced by a corrected version).',
-    className: 'border-red-400/40 bg-red-500/10 text-red-300',
-    Icon: ShieldX
-  },
-  TAMPERED: {
-    title: 'Altered document',
-    body: 'The content does not match what the doctor signed. Treat this prescription as forged.',
-    className: 'border-red-400/40 bg-red-500/10 text-red-300',
-    Icon: ShieldX
-  },
-  PENDING: {
-    title: 'Awaiting blockchain confirmation',
-    body: 'Signed by the doctor and queued for anchoring. Check again in a minute.',
-    className: 'border-amber-400/40 bg-amber-500/10 text-amber-300',
-    Icon: Clock
-  },
-  NOT_FOUND: {
-    title: 'Not found on the blockchain',
-    body: 'No record with this fingerprint was ever issued. If this came from a document, it may have been edited.',
-    className: 'border-red-400/40 bg-red-500/10 text-red-300',
-    Icon: ShieldAlert
-  },
-  UNAVAILABLE: {
-    title: 'Could not reach the blockchain',
-    body: 'Verification is not possible from this page right now.',
-    className: 'border-slate-400/40 bg-slate-500/10 text-slate-300',
-    Icon: ShieldAlert
-  },
-  DEMO: {
-    title: 'Demo record (not on-chain)',
-    body: 'This site is running without a backend. The fingerprint is real, but it was never written to a blockchain.',
-    className: 'border-sky-400/40 bg-sky-500/10 text-sky-300',
-    Icon: FlaskConical
-  }
-};
+function verdictCopy(verdict: Verdict, docName: string) {
+  const VERDICTS: Record<Verdict, { title: string; body: string; className: string; Icon: React.ElementType }> = {
+    VALID: {
+      title: `Authentic ${docName}`,
+      body: 'Issued and signed by a verified doctor, recorded on the blockchain, and unchanged since.',
+      className: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300',
+      Icon: ShieldCheck
+    },
+    REVOKED: {
+      title: `Revoked — do not accept this ${docName}`,
+      body: 'It was genuinely issued but has since been revoked (for example, replaced by a corrected version).',
+      className: 'border-red-400/40 bg-red-500/10 text-red-300',
+      Icon: ShieldX
+    },
+    TAMPERED: {
+      title: 'Altered document',
+      body: 'The content does not match what the doctor signed. Treat it as forged.',
+      className: 'border-red-400/40 bg-red-500/10 text-red-300',
+      Icon: ShieldX
+    },
+    FORGED: {
+      title: 'Not issued by a verified doctor',
+      body: 'This document was not signed by a doctor the hospital had verified at the time.',
+      className: 'border-red-400/40 bg-red-500/10 text-red-300',
+      Icon: ShieldX
+    },
+    PENDING: {
+      title: 'Awaiting blockchain confirmation',
+      body: 'Signed by the doctor and queued for the next on-chain batch. Check again shortly.',
+      className: 'border-amber-400/40 bg-amber-500/10 text-amber-300',
+      Icon: Clock
+    },
+    NOT_FOUND: {
+      title: 'Not found on the blockchain',
+      body: 'No record with this fingerprint was ever issued. If this came from a document, it may have been edited.',
+      className: 'border-red-400/40 bg-red-500/10 text-red-300',
+      Icon: ShieldAlert
+    },
+    UNAVAILABLE: {
+      title: 'Could not reach the blockchain',
+      body: 'Verification is not possible from this page right now.',
+      className: 'border-slate-400/40 bg-slate-500/10 text-slate-300',
+      Icon: ShieldAlert
+    },
+    DEMO: {
+      title: 'Demo record (not on-chain)',
+      body: 'This site is running without a backend. The fingerprint is real, but it was never written to a blockchain.',
+      className: 'border-sky-400/40 bg-sky-500/10 text-sky-300',
+      Icon: FlaskConical
+    }
+  };
+  return VERDICTS[verdict];
+}
 
 const CheckIcon: React.FC<{ state: CheckState }> = ({ state }) =>
   state === 'pass' ? (
@@ -174,6 +214,57 @@ const CheckIcon: React.FC<{ state: CheckState }> = ({ state }) =>
   ) : (
     <MinusCircle className="w-4 h-4 text-on-surface-variant shrink-0 mt-0.5" />
   );
+
+const DocumentContents: React.FC<{ document: VerifiableDocument }> = ({ document }) => (
+  <>
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+      <div>
+        <p className="text-on-surface-variant">Doctor</p>
+        <p className="text-white font-semibold">{document.issuer.name}</p>
+        <p className="text-on-surface-variant">{document.issuer.specialization}</p>
+      </div>
+      <div>
+        <p className="text-on-surface-variant">Patient</p>
+        <p className="text-white font-semibold">{document.patient.name}</p>
+      </div>
+      <div>
+        <p className="text-on-surface-variant">Visit date</p>
+        <p className="text-white font-semibold">{document.appointment.date}</p>
+      </div>
+    </div>
+    {isCertificate(document) ? (
+      <div className="space-y-2">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant font-heading">Medical certificate</p>
+        <div className="flex gap-3 items-start bg-surface-container/60 border border-white/5 rounded-xl p-3 text-xs">
+          <FileBadge className="w-4 h-4 text-tertiary mt-0.5 shrink-0" />
+          <div className="space-y-1">
+            <p className="text-white font-semibold">{CERTIFICATE_LABELS[document.certificate.type]}</p>
+            {formatCertificatePeriod(document.certificate) && <p className="text-on-surface-variant">{formatCertificatePeriod(document.certificate)}</p>}
+            <p className="text-white/90">{document.certificate.remarks}</p>
+          </div>
+        </div>
+      </div>
+    ) : (
+      <div className="space-y-2">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant font-heading">Medications</p>
+        {document.medications.length === 0 && <p className="text-xs text-on-surface-variant">No medication prescribed.</p>}
+        {document.medications.map((m, i) => (
+          <div key={i} className="flex gap-3 items-start bg-surface-container/60 border border-white/5 rounded-xl p-3">
+            <Pill className="w-4 h-4 text-tertiary mt-0.5 shrink-0" />
+            <div className="text-xs">
+              <p className="text-white font-semibold">
+                {m.medicineName} <span className="text-on-surface-variant font-normal">· {m.dosage}</span>
+              </p>
+              <p className="text-on-surface-variant">
+                {m.frequency} for {m.durationDays} day{m.durationDays === 1 ? '' : 's'} · {m.instructions}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </>
+);
 
 export const VerifyPage: React.FC = () => {
   // Read the QR-code hash once; later URL updates (replaceState below) must not re-trigger verification.
@@ -185,13 +276,13 @@ export const VerifyPage: React.FC = () => {
   const fileRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
 
-  const verify = useCallback(async (hash: string, uploaded: VerifiablePrescription | null = null) => {
+  const verify = useCallback(async (hash: string, uploaded: { document: VerifiableDocument; anchor: AnchorBundle | null } | null = null) => {
     const id = ++requestId.current;
     setError(null);
     setOutcome(null);
     if (!HASH_RE.test(hash)) {
       setLoading(false);
-      setError('Enter a 64-character fingerprint starting with 0x, or upload a verifiable prescription file.');
+      setError('Enter a 64-character fingerprint starting with 0x, or upload a verifiable document file.');
       return;
     }
     setLoading(true);
@@ -216,17 +307,17 @@ export const VerifyPage: React.FC = () => {
   const onFile = async (file?: File) => {
     if (!file) return;
     try {
-      const text = await file.text();
-      const parsed = JSON.parse(text) as VerifiablePrescription;
-      const hash = await fingerprintOf(parsed);
+      const parsed = parseVerifiableFile(await file.text());
+      const hash = await sha256Hex(canonicalize(parsed.document));
       setInput(hash);
       await verify(hash, parsed);
     } catch {
-      setError('That file is not a valid CarePulse verifiable prescription (expected the downloaded .json file).');
+      setError('That file is not a valid CarePulse verifiable document (expected the downloaded .json file).');
     }
   };
 
-  const v = outcome ? VERDICTS[outcome.verdict] : null;
+  const docName = outcome?.document ? (isCertificate(outcome.document) ? 'medical certificate' : 'prescription') : 'document';
+  const v = outcome ? verdictCopy(outcome.verdict, docName) : null;
   const contract = outcome?.chainSource === 'browser' ? chainConfig.contractAddress : outcome?.server?.network?.contractAddress;
   const explorerBase = outcome?.chainSource === 'browser' ? chainConfig.explorerUrl : outcome?.server?.network?.explorerUrl;
   const txUrl = outcome?.server?.record?.txUrl ?? explorerTx(outcome?.server?.record?.txHash, explorerBase);
@@ -241,7 +332,7 @@ export const VerifyPage: React.FC = () => {
             </div>
             <div>
               <p className="font-heading font-extrabold text-primary leading-tight">CarePulse</p>
-              <p className="text-[11px] text-on-surface-variant">Prescription Verification</p>
+              <p className="text-[11px] text-on-surface-variant">Document Verification</p>
             </div>
           </a>
           <span className="text-[11px] text-on-surface-variant hidden sm:block">No login required</span>
@@ -250,9 +341,9 @@ export const VerifyPage: React.FC = () => {
 
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
         <section className="space-y-2">
-          <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-white">Verify a prescription</h1>
+          <h1 className="font-heading font-extrabold text-2xl sm:text-3xl text-white">Verify a prescription or certificate</h1>
           <p className="text-sm text-on-surface-variant">
-            For pharmacies, insurers and patients. Scan the QR code, paste the fingerprint, or upload the downloaded prescription
+            For pharmacies, employers, insurers and patients. Scan the QR code, paste the fingerprint, or upload the downloaded
             file. The check runs against a public blockchain, so you don't have to trust our servers.
           </p>
         </section>
@@ -290,7 +381,7 @@ export const VerifyPage: React.FC = () => {
             }}
             className="w-full border border-dashed border-white/15 hover:border-primary/50 rounded-xl px-4 py-3 text-xs text-on-surface-variant flex items-center justify-center gap-2 transition-colors"
           >
-            <Upload className="w-4 h-4" /> Or drop / choose a verifiable prescription file (.json)
+            <Upload className="w-4 h-4" /> Or drop / choose a verifiable document file (.json)
           </button>
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
           {error && <p className="text-xs text-red-300">{error}</p>}
@@ -309,15 +400,14 @@ export const VerifyPage: React.FC = () => {
               <div className="space-y-1">
                 <h2 className="font-heading font-extrabold text-lg">{v.title}</h2>
                 <p className="text-sm text-on-surface/90">{v.body}</p>
+                {outcome.verdictDetail && <p className="text-sm font-semibold">{outcome.verdictDetail}</p>}
                 {outcome.note && outcome.verdict === 'UNAVAILABLE' && <p className="text-xs opacity-80">{outcome.note}</p>}
               </div>
             </section>
 
-            {outcome.payload && (
+            {outcome.document && (
               <section
-                className={`glass-card rounded-2xl p-5 space-y-4 text-sm ${
-                  outcome.verdict === 'VALID' ? '' : 'border border-red-400/30 opacity-90'
-                }`}
+                className={`glass-card rounded-2xl p-5 space-y-4 text-sm ${outcome.verdict === 'VALID' ? '' : 'border border-red-400/30 opacity-90'}`}
               >
                 {outcome.verdict === 'VALID' ? (
                   <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 font-heading flex items-center gap-1">
@@ -327,42 +417,11 @@ export const VerifyPage: React.FC = () => {
                   <p className="text-[11px] font-bold text-red-300 font-heading flex items-center gap-1.5">
                     <ShieldAlert className="w-4 h-4" />
                     {outcome.verdict === 'REVOKED'
-                      ? 'Contents of a revoked prescription. Do not use.'
+                      ? `Contents of a revoked ${docName}. Do not use.`
                       : 'Unverified contents. Do not rely on anything shown below.'}
                   </p>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <div>
-                    <p className="text-on-surface-variant">Doctor</p>
-                    <p className="text-white font-semibold">{outcome.payload.issuer.name}</p>
-                    <p className="text-on-surface-variant">{outcome.payload.issuer.specialization}</p>
-                  </div>
-                  <div>
-                    <p className="text-on-surface-variant">Patient</p>
-                    <p className="text-white font-semibold">{outcome.payload.patient.name}</p>
-                  </div>
-                  <div>
-                    <p className="text-on-surface-variant">Visit date</p>
-                    <p className="text-white font-semibold">{outcome.payload.appointment.date}</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant font-heading">Medications</p>
-                  {outcome.payload.medications.length === 0 && <p className="text-xs text-on-surface-variant">No medication prescribed.</p>}
-                  {outcome.payload.medications.map((m, i) => (
-                    <div key={i} className="flex gap-3 items-start bg-surface-container/60 border border-white/5 rounded-xl p-3">
-                      <Pill className="w-4 h-4 text-tertiary mt-0.5 shrink-0" />
-                      <div className="text-xs">
-                        <p className="text-white font-semibold">
-                          {m.medicineName} <span className="text-on-surface-variant font-normal">· {m.dosage}</span>
-                        </p>
-                        <p className="text-on-surface-variant">
-                          {m.frequency} for {m.durationDays} day{m.durationDays === 1 ? '' : 's'} · {m.instructions}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <DocumentContents document={outcome.document} />
               </section>
             )}
 
@@ -402,6 +461,15 @@ export const VerifyPage: React.FC = () => {
                     </dd>
                   </>
                 )}
+                {outcome.onChain?.mode === 'BATCH' && (
+                  <>
+                    <dt className="text-on-surface-variant">Anchoring</dt>
+                    <dd className="text-white">
+                      Merkle batch #{outcome.onChain.batchId}
+                      {outcome.anchor?.proof ? ` · proof of ${outcome.anchor.proof.length} hash${outcome.anchor.proof.length === 1 ? '' : 'es'}` : ''}
+                    </dd>
+                  </>
+                )}
                 {contract && (
                   <>
                     <dt className="text-on-surface-variant">Registry contract</dt>
@@ -436,8 +504,8 @@ export const VerifyPage: React.FC = () => {
                 )}
               </dl>
               <p className="text-on-surface-variant pt-2 leading-relaxed">
-                Only this fingerprint is stored on the blockchain. It is a salted SHA-256 hash of the prescription, so the
-                prescription can be proven authentic without its contents ever being made public.
+                Only this fingerprint is stored on the blockchain. It is a salted SHA-256 hash of the document, so it can be proven
+                authentic without its contents ever being made public.
               </p>
             </section>
           </>

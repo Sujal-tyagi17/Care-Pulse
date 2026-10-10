@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ShieldCheck, ShieldOff, RefreshCw, Loader2, ExternalLink, Wallet, Boxes, FileCheck2, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, ShieldOff, RefreshCw, Loader2, ExternalLink, Wallet, Boxes, FileCheck2, AlertTriangle, Layers, Zap } from 'lucide-react';
+import { AuditLogPanel } from './AuditLogPanel';
 import { api } from '../api/client';
 import { BlockchainOverview } from '../types';
 import { BlockchainBadge } from './BlockchainBadge';
@@ -31,6 +32,30 @@ export const BlockchainAdminPanel: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [busyDoctor, setBusyDoctor] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+  const [anchoring, setAnchoring] = useState(false);
+
+  const anchorNow = async () => {
+    setAnchoring(true);
+    setMessage(null);
+    try {
+      const r = await api.anchorBatchNow();
+      if (r.status === 'ANCHORED') {
+        setMessage({
+          type: 'ok',
+          text: `Batch #${r.onChainBatchId} anchored: ${r.records} record${r.records === 1 ? '' : 's'} + audit checkpoint in one transaction.`
+        });
+      } else if (r.status === 'SKIPPED') {
+        setMessage({ type: 'ok', text: r.reason ?? 'Nothing to anchor.' });
+      } else {
+        setMessage({ type: 'error', text: r.reason ?? 'Anchoring failed.' });
+      }
+      await load();
+    } catch (err) {
+      setMessage({ type: 'error', text: (err as Error).message });
+    } finally {
+      setAnchoring(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,12 +88,13 @@ export const BlockchainAdminPanel: React.FC = () => {
   const counts = data?.recordCounts ?? {};
 
   return (
-    <>
+    // shrink-0: the dashboard's <main> is a fixed-height flex column; without it the cards get squashed instead of scrolling.
+    <div className="flex flex-col gap-6 shrink-0">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-          <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-white mb-1">Blockchain Prescription Registry</h1>
+          <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-white mb-1">Blockchain Verification</h1>
           <p className="text-xs sm:text-sm text-on-surface-variant max-w-2xl">
-            Verify doctors on-chain so their signed prescriptions are accepted, and monitor anchoring. Only salted fingerprints
+            Verify doctors on-chain so their signed prescriptions and certificates are accepted, and monitor anchoring. Only salted fingerprints
             are written to the chain; no patient data ever leaves the database.
           </p>
         </div>
@@ -126,10 +152,87 @@ export const BlockchainAdminPanel: React.FC = () => {
             {net.relayerAddress}{' '}
             {!net.relayerIsOwner && <span className="text-red-300 font-sans">(not the contract owner — doctor registration will fail)</span>}
           </span>
-          <span className="text-on-surface-variant">Anchoring queue</span>
+          <span className="text-on-surface-variant">Records</span>
           <span className="text-white">
             {['CONFIRMED', 'PENDING', 'SUBMITTED', 'FAILED', 'REVOKED'].map((k) => `${k.toLowerCase()}: ${counts[k] ?? 0}`).join(' · ')}
           </span>
+        </section>
+      )}
+
+      {net && data?.batching && (
+        <section className="glass-card rounded-2xl border border-white/10 overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <h3 className="font-heading font-extrabold text-sm text-white flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-primary" /> Merkle batch anchoring
+              </h3>
+              <p className="text-[11px] text-on-surface-variant">
+                {data.batching.mode === 'BATCH'
+                  ? `Every ${data.batching.intervalMinutes} min, all new records and the audit-log head go on-chain in one transaction. ${
+                      data.batching.pendingRecords
+                    } record${data.batching.pendingRecords === 1 ? '' : 's'} waiting${
+                      data.batching.nextBatchAt
+                        ? `; next batch about ${new Date(data.batching.nextBatchAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        : ''
+                    }.`
+                  : 'Single-transaction mode: each record is anchored on its own (BLOCKCHAIN_BATCH_INTERVAL_MINUTES=0).'}
+              </p>
+            </div>
+            <button
+              onClick={anchorNow}
+              disabled={anchoring}
+              className="px-3 py-2 rounded-xl bg-primary text-on-primary text-xs font-heading font-bold flex items-center gap-1.5 disabled:opacity-60 shrink-0"
+            >
+              {anchoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Anchor now
+            </button>
+          </div>
+          {data.batching.recentBatches.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="text-on-surface-variant text-left">
+                  <tr className="border-b border-white/5">
+                    <th className="px-5 py-2.5 font-semibold">Batch</th>
+                    <th className="px-5 py-2.5 font-semibold">Records</th>
+                    <th className="px-5 py-2.5 font-semibold">Audit checkpoint</th>
+                    <th className="px-5 py-2.5 font-semibold">When</th>
+                    <th className="px-5 py-2.5 font-semibold text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.batching.recentBatches.map((b) => (
+                    <tr key={b.id} className="border-b border-white/5 last:border-0">
+                      <td className="px-5 py-2.5 text-white font-mono">
+                        {b.onChainBatchId !== null ? (
+                          b.txUrl ? (
+                            <a href={b.txUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                              #{b.onChainBatchId} <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : (
+                            `#${b.onChainBatchId}`
+                          )
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="px-5 py-2.5 text-white">{b.leafCount}</td>
+                      <td className="px-5 py-2.5 text-on-surface-variant">entry #{b.auditSeq}</td>
+                      <td className="px-5 py-2.5 text-on-surface-variant whitespace-nowrap">{new Date(b.anchoredAt ?? b.createdAt).toLocaleString()}</td>
+                      <td className="px-5 py-2.5 text-right">
+                        <span
+                          title={b.lastError ?? undefined}
+                          className={
+                            b.status === 'CONFIRMED' ? 'text-emerald-300 font-bold' : b.status === 'FAILED' ? 'text-red-300 font-bold' : 'text-amber-300 font-bold'
+                          }
+                        >
+                          {b.status.toLowerCase()}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
 
@@ -251,6 +354,8 @@ export const BlockchainAdminPanel: React.FC = () => {
           </div>
         </section>
       )}
-    </>
+
+      {data && (data.enabled || !data.demo) && <AuditLogPanel />}
+    </div>
   );
 };

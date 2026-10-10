@@ -5,7 +5,14 @@ import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 import { AuthRequest, PrescriptionItem } from '../types.js';
 import { generatePostVisitSummary } from '../services/llm.service.js';
 import { sendEmailNotification, getPostVisitSummaryHtml, formatDoctorName } from '../services/email.service.js';
-import { createPrescriptionRecord, toRecordSummary } from '../services/blockchain.service.js';
+import {
+  createPrescriptionRecord,
+  createCertificateRecord,
+  toRecordSummary,
+  toCertificateSummary,
+  isBlockchainEnabled
+} from '../services/blockchain.service.js';
+import { logAudit } from '../services/audit.service.js';
 
 const router = Router();
 
@@ -134,19 +141,29 @@ router.post('/:appointmentId/post-visit', requireAuth, requireRole(['DOCTOR', 'A
     // A blockchain problem must never block the consultation itself.
     let blockchainRecord = null;
     try {
-      const rec = await createPrescriptionRecord({
-        appointmentId,
-        doctorUserId: apt.doctorId, // always the assigned doctor's key, even when an admin submits
-        doctorName: apt.doctor.name,
-        specialization: apt.doctor.doctorProfile?.specialization ?? 'General',
-        patientName: apt.patient.name,
-        appointmentDate: apt.date,
-        clinicalNotes,
-        prescriptions
-      });
+      // Always signed with the assigned doctor's key, even when an admin submits.
+      const rec = await createPrescriptionRecord({ appointmentId, clinicalNotes, prescriptions });
       blockchainRecord = rec ? toRecordSummary(rec) : null;
     } catch (chainErr) {
       console.error('[Blockchain] Could not create prescription record:', (chainErr as Error).message);
+    }
+
+    const actor = { id: req.user!.id, role: req.user!.role };
+    await logAudit({
+      eventType: 'CONSULTATION_COMPLETED',
+      entityType: 'APPOINTMENT',
+      entityId: appointmentId,
+      actor,
+      data: { medicationCount: prescriptions.length, edited: !!apt.postVisitSummary }
+    });
+    if (blockchainRecord) {
+      await logAudit({
+        eventType: 'PRESCRIPTION_ISSUED',
+        entityType: 'RECORD',
+        entityId: blockchainRecord.recordHash,
+        actor,
+        data: { appointmentId }
+      });
     }
 
     // Send email to patient with patient-friendly summary
@@ -187,7 +204,65 @@ router.post('/:appointmentId/post-visit', requireAuth, requireRole(['DOCTOR', 'A
   }
 });
 
-// 2. Get medication reminders for the current logged-in patient
+// 2. Doctor issues a blockchain-verifiable medical certificate (sick leave / fitness / visit)
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD');
+const certificateSchema = z
+  .object({
+    type: z.enum(['SICK_LEAVE', 'FITNESS', 'VISIT']),
+    fromDate: isoDate.nullable().optional(),
+    toDate: isoDate.nullable().optional(),
+    remarks: z.string().trim().min(3, 'Add a short remark for the certificate.').max(500)
+  })
+  .superRefine((c, ctx) => {
+    if (c.type === 'SICK_LEAVE' && (!c.fromDate || !c.toDate)) {
+      ctx.addIssue({ code: 'custom', message: 'Sick-leave certificates need a from and to date.', path: ['fromDate'] });
+    }
+    if (c.fromDate && c.toDate && c.toDate < c.fromDate) {
+      ctx.addIssue({ code: 'custom', message: 'The end date must be on or after the start date.', path: ['toDate'] });
+    }
+  });
+
+router.post('/:appointmentId/certificate', requireAuth, requireRole(['DOCTOR', 'ADMIN']), async (req: AuthRequest, res) => {
+  try {
+    const { appointmentId } = req.params;
+    const details = certificateSchema.parse(req.body);
+
+    const apt = await prisma.appointment.findUnique({ where: { id: appointmentId } });
+    if (!apt) return res.status(404).json({ success: false, message: 'Appointment not found' });
+    if (req.user!.role === 'DOCTOR' && apt.doctorId !== req.user!.id) {
+      return res.status(403).json({ success: false, message: 'Unauthorized. You are not the assigned doctor.' });
+    }
+    if (apt.status !== 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'Certificates can only be issued after the consultation is completed.' });
+    }
+    if (!isBlockchainEnabled()) {
+      return res.status(503).json({ success: false, message: 'Verifiable certificates need blockchain anchoring, which is not configured on this server.' });
+    }
+
+    const rec = await createCertificateRecord(appointmentId, {
+      type: details.type,
+      fromDate: details.fromDate ?? null,
+      toDate: details.toDate ?? null,
+      remarks: details.remarks
+    });
+    await logAudit({
+      eventType: 'CERTIFICATE_ISSUED',
+      entityType: 'RECORD',
+      entityId: rec!.recordHash,
+      actor: { id: req.user!.id, role: req.user!.role },
+      data: { appointmentId, certificateType: details.type }
+    });
+
+    return res.status(201).json({ success: true, message: 'Medical certificate issued.', certificate: toCertificateSummary(rec!) });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ success: false, message: err.errors[0]?.message, errors: err.errors });
+    }
+    return res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+});
+
+// 3. Get medication reminders for the current logged-in patient
 router.get('/medications', requireAuth, async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.id;
@@ -227,7 +302,7 @@ router.get('/medications', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// 3. Toggle medication reminder active state
+// 4. Toggle medication reminder active state
 router.patch('/medications/:id/toggle', requireAuth, async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;

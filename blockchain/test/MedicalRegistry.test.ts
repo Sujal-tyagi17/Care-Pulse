@@ -245,9 +245,8 @@ describe("MedicalRegistry", () => {
       );
     });
 
-    it("lets the hospital revoke, but only once, and only existing records", async () => {
+    it("lets the hospital revoke, but only once", async () => {
       const { registry, doctor, attacker, deadline, recordHash } = await loadFixture(deployFixture);
-      await expect(registry.adminRevokeRecord(recordHash)).to.be.revertedWithCustomError(registry, "RecordNotFound");
       await registry.anchorRecord(recordHash, PRESCRIPTION, deadline, await signAnchor(registry, doctor, recordHash, PRESCRIPTION, deadline));
       await expect(registry.connect(attacker).adminRevokeRecord(recordHash)).to.be.revertedWithCustomError(
         registry,
@@ -269,5 +268,12 @@ describe("MedicalRegistry", () => {
       await registry.connect(otherDoctor).acceptOwnership();
       expect(await registry.owner()).to.equal(otherDoctor.address);
     });
+  });
+
+  it("hospital can pre-revoke a fingerprint; it then never verifies as live", async () => {
+    const { registry, doctor, deadline, recordHash } = await loadFixture(deployFixture);
+    await registry.adminRevokeRecord(recordHash);
+    await registry.anchorRecord(recordHash, PRESCRIPTION, deadline, await signAnchor(registry, doctor, recordHash, PRESCRIPTION, deadline));
+    expect((await registry.verifyRecord(recordHash)).revoked).to.equal(true);
   });
 });

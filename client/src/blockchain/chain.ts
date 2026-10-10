@@ -4,7 +4,7 @@
  * ethers is loaded lazily, only when a verification actually runs.
  */
 import abi from './MedicalRegistry.abi.json';
-import type { OnChainRecord } from '../types';
+import type { AnchorBundle, BatchCheck, OnChainRecord } from '../types';
 
 const RECORD_TYPE_NAMES = ['PRESCRIPTION', 'CLINICAL_SUMMARY', 'MEDICAL_CERTIFICATE'];
 
@@ -56,7 +56,42 @@ export async function readRecordDirect(recordHash: string): Promise<OnChainRecor
     doctorSpecialization: r.doctorSpecialization,
     doctorCurrentlyActive: r.doctorCurrentlyActive,
     issuedAt: Number(r.issuedAt),
-    recordType: RECORD_TYPE_NAMES[Number(r.recordType)] ?? 'PRESCRIPTION'
+    recordType: RECORD_TYPE_NAMES[Number(r.recordType)] ?? 'PRESCRIPTION',
+    mode: 'SINGLE'
+  };
+}
+
+const BATCH_CHECKS: BatchCheck[] = [
+  'VALID',
+  'UNKNOWN_BATCH',
+  'NOT_IN_BATCH',
+  'SIGNER_NOT_REGISTERED',
+  'DOCTOR_SUSPENDED_AT_ANCHOR_TIME',
+  'SIGNATURE_EXPIRED_BEFORE_ANCHOR'
+];
+
+/** Verifies a Merkle-batched record directly: proof + doctor signature + registry, all on-chain. */
+export async function readBatchedRecordDirect(recordHash: string, anchor: AnchorBundle): Promise<OnChainRecord> {
+  if (!isDirectChainConfigured()) throw new Error('Direct chain access is not configured for this site.');
+  if (anchor.batchId === null || !anchor.proof) throw new Error('Anchor bundle has no Merkle proof');
+  const { JsonRpcProvider, Contract } = await import('ethers');
+  const provider = new JsonRpcProvider(chainConfig.rpcUrl, chainConfig.chainId, { staticNetwork: true });
+  const contract = new Contract(chainConfig.contractAddress, abi, provider);
+  const typeIndex = Math.max(0, RECORD_TYPE_NAMES.indexOf(anchor.recordType));
+  const v = await contract.verifyBatchedRecord(recordHash, typeIndex, anchor.deadline, anchor.signature, anchor.batchId, anchor.proof);
+  const batchCheck = BATCH_CHECKS[Number(v.check)] ?? 'NOT_IN_BATCH';
+  return {
+    exists: batchCheck === 'VALID',
+    revoked: v.revoked,
+    doctor: v.doctor,
+    doctorName: v.doctorName,
+    doctorSpecialization: v.doctorSpecialization,
+    doctorCurrentlyActive: v.doctorCurrentlyActive,
+    issuedAt: Number(v.anchoredAt),
+    recordType: anchor.recordType,
+    mode: 'BATCH',
+    batchId: anchor.batchId,
+    batchCheck
   };
 }
 

@@ -18,8 +18,11 @@ import {
   signAnchor,
   signRevoke,
   sha256Hex,
-  deriveDoctorWallet
+  deriveDoctorWallet,
+  buildBatchTree,
+  RecordTypeName
 } from '../src/blockchain/core.js';
+import { GENESIS_HASH, computeEntryHash, findChainBreak, AuditEntryFields } from '../src/blockchain/audit-chain.js';
 import { canonicalize as clientCanonicalize, sha256Hex as clientSha256 } from '../../client/src/blockchain/canonical.js';
 
 const RPC = process.env.BLOCKCHAIN_TEST_RPC || 'http://127.0.0.1:8545';
@@ -155,6 +158,127 @@ async function main() {
     assert.equal(s.relayerIsOwner, true);
     assert.equal(s.registeredDoctors, 1);
     assert.equal(s.totalRecords, 5);
+  });
+
+  // ---------------- Merkle batches ----------------
+  const doctor2 = chain.doctorWallet('doctor-user-uuid-2');
+  await chain.registerDoctor(doctor2.address, 'Dr. Second', 'General Medicine', sha256Hex('cred-2'));
+  const batchRecords = await Promise.all(
+    Array.from({ length: 7 }, async (_, i) => {
+      const signer = i % 2 ? doctor2 : doctor;
+      const recordType: RecordTypeName = i % 3 === 0 ? 'MEDICAL_CERTIFICATE' : 'PRESCRIPTION';
+      const { recordHash } = hashRecord({ batch: i, salt: newSalt() });
+      return { recordHash, recordType, doctor: signer.address, signature: await signAnchor(signer, chain.domain, recordHash, recordType, deadline) };
+    })
+  );
+  const tree = buildBatchTree(batchRecords);
+  let batchId = -1;
+
+  await step('server-built Merkle tree anchors in one transaction with an audit checkpoint', async () => {
+    const res = await chain.anchorBatch(tree.root, batchRecords.length, sha256Hex('audit-head'), 12);
+    batchId = res.batchId;
+    assert.equal(batchId, 0);
+    const b = await chain.getBatch(batchId);
+    assert.equal(b.root, tree.root);
+    assert.equal(b.leafCount, 7);
+    assert.equal(b.auditSeq, 12);
+    assert.equal(await chain.batchCount(), 1);
+  });
+
+  await step('every batched record verifies with its proof and doctor signature', async () => {
+    for (const [i, r] of batchRecords.entries()) {
+      const v = await chain.verifyBatched(r.recordHash, r.recordType, deadline, r.signature, batchId, tree.proofs[i]);
+      assert.equal(v.batchCheck, 'VALID', `record ${i}`);
+      assert.equal(v.exists, true);
+      assert.equal(v.doctor, r.doctor);
+      assert.equal(v.mode, 'BATCH');
+    }
+  });
+
+  await step('altered record, swapped proof or wrong type fail batched verification', async () => {
+    const r = batchRecords[1];
+    const altered = await chain.verifyBatched(hashRecord({ forged: true }).recordHash, r.recordType, deadline, r.signature, batchId, tree.proofs[1]);
+    assert.equal(altered.batchCheck, 'NOT_IN_BATCH');
+    assert.equal((await chain.verifyBatched(r.recordHash, r.recordType, deadline, r.signature, batchId, tree.proofs[2])).batchCheck, 'NOT_IN_BATCH');
+    assert.equal((await chain.verifyBatched(r.recordHash, 'MEDICAL_CERTIFICATE', deadline, r.signature, batchId, tree.proofs[1])).batchCheck, 'NOT_IN_BATCH');
+    assert.equal((await chain.verifyBatched(r.recordHash, r.recordType, deadline, r.signature, 99, tree.proofs[1])).batchCheck, 'UNKNOWN_BATCH');
+  });
+
+  await step('a one-record batch works (empty proof)', async () => {
+    const { recordHash } = hashRecord({ solo: true, salt: newSalt() });
+    const sig = await signAnchor(doctor, chain.domain, recordHash, 'PRESCRIPTION', deadline);
+    const t = buildBatchTree([{ recordHash, recordType: 'PRESCRIPTION', doctor: doctor.address }]);
+    assert.deepEqual(t.proofs[0], []);
+    const { batchId: id } = await chain.anchorBatch(t.root, 1, sha256Hex('audit-head'), 12);
+    assert.equal((await chain.verifyBatched(recordHash, 'PRESCRIPTION', deadline, sig, id, t.proofs[0])).batchCheck, 'VALID');
+  });
+
+  await step('doctor-signed revocation of a batched record', async () => {
+    const r = batchRecords[3];
+    const signer = chain.doctorWallet('doctor-user-uuid-2'); // record 3 is odd → doctor2
+    const rsig = await signRevoke(signer, chain.domain, r.recordHash, deadline);
+    await chain.revokeBatched(r.recordHash, r.recordType, r.doctor, batchId, tree.proofs[3], deadline, rsig);
+    const v = await chain.verifyBatched(r.recordHash, r.recordType, deadline, r.signature, batchId, tree.proofs[3]);
+    assert.equal(v.revoked, true);
+    await expectRevert(
+      chain.revokeBatched(r.recordHash, r.recordType, r.doctor, batchId, tree.proofs[3], deadline, rsig),
+      'RecordAlreadyRevoked'
+    );
+  });
+
+  await step('audit sequence cannot go backwards on-chain', async () => {
+    await expectRevert(chain.anchorBatch('0x' + '0'.repeat(64), 0, sha256Hex('old-head'), 5), 'AuditSequenceWentBackwards');
+  });
+
+  // ---------------- Audit hash chain ----------------
+  const entries: Array<AuditEntryFields & { entryHash: string }> = [];
+  for (let seq = 1; seq <= 6; seq++) {
+    const fields: AuditEntryFields = {
+      seq,
+      prevHash: entries.length ? entries[entries.length - 1].entryHash : GENESIS_HASH,
+      eventType: seq % 2 ? 'APPOINTMENT_BOOKED' : 'APPOINTMENT_CANCELLED',
+      entityType: 'APPOINTMENT',
+      entityId: `apt-${seq}`,
+      actorId: 'user-1',
+      actorRole: 'PATIENT',
+      data: canonicalize({ n: seq }),
+      occurredAt: new Date(1_700_000_000_000 + seq * 1000).toISOString()
+    };
+    entries.push({ ...fields, entryHash: computeEntryHash(fields) });
+  }
+
+  await step('intact audit chain verifies, also when checked in chunks', () => {
+    assert.equal(findChainBreak(entries).break, null);
+    const first = findChainBreak(entries.slice(0, 3));
+    assert.equal(findChainBreak(entries.slice(3), first.lastHash, first.nextSeq).break, null);
+  });
+
+  await step('editing, deleting or re-hashing audit history is detected', () => {
+    const edited = entries.map((e) => ({ ...e }));
+    edited[2].eventType = 'APPOINTMENT_CANCELLED';
+    assert.deepEqual(findChainBreak(edited).break, { seq: 3, reason: 'HASH_MISMATCH' });
+
+    const deleted = entries.filter((e) => e.seq !== 4);
+    assert.deepEqual(findChainBreak(deleted).break, { seq: 4, reason: 'SEQUENCE_GAP' });
+
+    // Attacker rewrites entry 2 AND recomputes every later hash: the chain looks valid…
+    const rewritten = entries.map((e) => ({ ...e }));
+    rewritten[1].data = canonicalize({ n: 999 });
+    for (let i = 1; i < rewritten.length; i++) {
+      rewritten[i].prevHash = rewritten[i - 1].entryHash;
+      rewritten[i].entryHash = computeEntryHash(rewritten[i]);
+    }
+    assert.equal(findChainBreak(rewritten).break, null);
+    // …but no longer matches the head anchored on-chain, which is how the server catches it.
+    assert.notEqual(rewritten[5].entryHash, entries[5].entryHash);
+  });
+
+  await step('audit checkpoint read back from the chain matches the local head', async () => {
+    const head = entries[5];
+    const { batchId: id } = await chain.anchorBatch('0x' + '0'.repeat(64), 0, head.entryHash, 12 + head.seq);
+    const onChain = await chain.getBatch(id);
+    assert.equal(onChain.auditHead, head.entryHash);
+    assert.equal(onChain.leafCount, 0);
   });
 
   console.log(`\n${passed} passing`);

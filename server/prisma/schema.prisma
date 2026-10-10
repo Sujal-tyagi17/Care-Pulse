@@ -174,6 +174,11 @@ model BlockchainRecord {
   contractAddress   String
   status            String      @default("PENDING") // PENDING, SUBMITTED, CONFIRMED, FAILED, SUPERSEDED, REVOKED
   isCurrent         Boolean     @default(true) // false once replaced by an edited record
+  anchorMode        String      @default("SINGLE") // SINGLE (own tx) or BATCH (Merkle batch)
+  batchId           String?
+  batch             AnchorBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  onChainBatchId    Int?        // index of the batch in the contract
+  merkleProof       String?     // JSON array of bytes32 sibling hashes
   txHash            String?
   blockNumber       Int?
   anchoredAt        DateTime?
@@ -186,4 +191,43 @@ model BlockchainRecord {
 
   @@index([appointmentId, isCurrent])
   @@index([status, attempts])
+  @@index([anchorMode, status])
+}
+
+// One on-chain transaction anchoring many records (Merkle root) plus an audit-log checkpoint.
+model AnchorBatch {
+  id             String             @id @default(uuid())
+  onChainBatchId Int?               @unique
+  root           String             // 0x0…0 for an audit-only checkpoint
+  leafCount      Int
+  auditHead      String             // entryHash of the latest audit entry covered
+  auditSeq       Int
+  status         String             @default("SUBMITTED") // SUBMITTED, CONFIRMED, FAILED
+  txHash         String?
+  blockNumber    Int?
+  lastError      String?
+  createdAt      DateTime           @default(now())
+  anchoredAt     DateTime?
+  records        BlockchainRecord[]
+
+  @@index([status])
+}
+
+// Append-only, hash-chained audit log. Each entry commits to the previous one, and batch
+// checkpoints anchor the head on-chain, so any edit or deletion of history is detectable.
+// Only identifiers and statuses are logged here — never symptoms, notes or prescriptions.
+model AuditLog {
+  seq        Int      @id
+  eventType  String   // APPOINTMENT_BOOKED, CONSULTATION_COMPLETED, CERTIFICATE_ISSUED, ...
+  entityType String
+  entityId   String
+  actorId    String?
+  actorRole  String?
+  data       String   // canonical JSON of non-sensitive details
+  occurredAt String   // ISO timestamp, part of the hashed entry
+  prevHash   String
+  entryHash  String   @unique
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
 }

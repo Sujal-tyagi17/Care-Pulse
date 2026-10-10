@@ -6,7 +6,10 @@ import {
   TimeSlot,
   VerificationResult,
   BlockchainOverview,
-  VerifiablePrescription
+  VerifiablePrescription,
+  VerifiableCertificate,
+  CertificateDetails,
+  CertificateSummary
 } from '../types';
 import { canonicalize, sha256Hex } from '../blockchain/canonical';
 
@@ -547,7 +550,59 @@ export class MockDataStore {
       this.setStorage('demo_chain_records', store);
       this.setStorage('demo_chain_index', byAppointment);
     }
+    const certs = this.getStorage<Record<string, string>>('demo_cert_index', {});
+    const allRecords = this.getStorage<Record<string, string>>('demo_chain_records', {});
+    for (const apt of appointments) {
+      const h = certs[apt.id];
+      if (h && allRecords[h]) apt.certificate = this.demoCertificateSummary(h, JSON.parse(allRecords[h]));
+    }
     return appointments;
+  }
+
+  static async issueDemoCertificate(appointmentId: string, details: CertificateDetails) {
+    const apt = this.getAppointments().find((a) => a.id === appointmentId);
+    if (!apt) throw new Error('Appointment not found');
+    const document: VerifiableCertificate = {
+      schema: 'carepulse.certificate.v1',
+      recordType: 'MEDICAL_CERTIFICATE',
+      recordId: `demo-cert-${appointmentId}-${Date.now()}`,
+      issuedAt: new Date().toISOString(),
+      salt: '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32))).map((b) => b.toString(16).padStart(2, '0')).join(''),
+      issuer: {
+        name: apt.doctor?.name || 'CarePulse Doctor',
+        specialization: apt.doctor?.specialization || 'General Medicine',
+        wallet: '0x0000000000000000000000000000000000000000',
+        registry: '0x0000000000000000000000000000000000000000',
+        chainId: 0
+      },
+      patient: { name: apt.patient?.name || 'Patient' },
+      appointment: { id: apt.id, date: apt.date },
+      certificate: details
+    };
+    const canonical = canonicalize(document);
+    const hash = await sha256Hex(canonical);
+    const store = this.getStorage<Record<string, string>>('demo_chain_records', {});
+    store[hash] = canonical;
+    this.setStorage('demo_chain_records', store);
+    const certs = this.getStorage<Record<string, string>>('demo_cert_index', {});
+    certs[appointmentId] = hash;
+    this.setStorage('demo_cert_index', certs);
+    return this.demoCertificateSummary(hash, document);
+  }
+
+  private static demoCertificateSummary(hash: string, document: VerifiableCertificate): CertificateSummary {
+    return {
+      recordHash: hash,
+      recordType: 'MEDICAL_CERTIFICATE',
+      status: 'DEMO',
+      txHash: null,
+      txUrl: null,
+      anchoredAt: null,
+      doctorAddress: '0x0000000000000000000000000000000000000000',
+      chainId: 0,
+      issuedAt: document.issuedAt,
+      certificate: document.certificate
+    };
   }
 
   static getDemoVerification(recordHash: string): VerificationResult | null {

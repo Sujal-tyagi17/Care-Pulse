@@ -9,10 +9,19 @@ import {
   ensureDoctorWallet,
   registerDoctorOnChain,
   setDoctorChainActive,
-  getBlockchainOverview
+  getBlockchainOverview,
+  runBatchCycle,
+  checkAuditIntegrity
 } from '../services/blockchain.service.js';
+import { logAudit, listAuditEntries } from '../services/audit.service.js';
+import { AuthRequest } from '../types.js';
 
 const router = Router();
+
+const actorOf = (req: unknown) => {
+  const u = (req as AuthRequest).user;
+  return u ? { id: u.id, role: u.role } : null;
+};
 
 // Ensure all routes require Admin role
 router.use(requireAuth, requireRole(['ADMIN']));
@@ -110,6 +119,7 @@ router.post('/doctors', async (req, res) => {
     // Give the new doctor a signing wallet (registration on-chain is a separate, explicit admin step)
     const walletAddress = await ensureDoctorWallet(doctor.id).catch(() => null);
     if (walletAddress && doctor.doctorProfile) doctor.doctorProfile.walletAddress = walletAddress;
+    await logAudit({ eventType: 'DOCTOR_CREATED', entityType: 'DOCTOR', entityId: doctor.id, actor: actorOf(req), data: { specialization: data.specialization } });
 
     return res.status(201).json({
       success: true,
@@ -165,6 +175,13 @@ router.put('/doctors/:id', async (req, res) => {
       include: { doctorProfile: true }
     });
 
+    await logAudit({
+      eventType: 'DOCTOR_UPDATED',
+      entityType: 'DOCTOR',
+      entityId: id,
+      actor: actorOf(req),
+      data: { fields: Object.keys(req.body ?? {}).sort().join(',') }
+    });
     return res.json({ success: true, message: 'Doctor updated successfully.', doctor: user });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
@@ -262,6 +279,23 @@ router.post('/doctors/:id/leave', async (req, res) => {
       }
     }
 
+    await logAudit({
+      eventType: 'DOCTOR_LEAVE_ADDED',
+      entityType: 'DOCTOR',
+      entityId: doctorId,
+      actor: actorOf(req),
+      data: { leaveDate, affectedAppointments: affectedAppointments.length }
+    });
+    if (affectedAppointments.length > 0) {
+      await logAudit({
+        eventType: 'APPOINTMENTS_RESCHEDULE_REQUIRED',
+        entityType: 'DOCTOR',
+        entityId: doctorId,
+        actor: actorOf(req),
+        data: { leaveDate, appointmentIds: affectedAppointments.map((a) => a.id).join(',') }
+      });
+    }
+
     return res.json({
       success: true,
       message: `Doctor marked on leave for ${leaveDate}. Conflicting appointments resolved.`,
@@ -304,6 +338,7 @@ router.delete('/doctors/:id/leaves/:leaveDate', async (req, res) => {
     await prisma.doctorLeave.delete({
       where: { doctorId_leaveDate: { doctorId, leaveDate } }
     });
+    await logAudit({ eventType: 'DOCTOR_LEAVE_REMOVED', entityType: 'DOCTOR', entityId: doctorId, actor: actorOf(req), data: { leaveDate } });
     return res.json({ success: true, message: `Leave for ${leaveDate} removed.` });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
@@ -323,6 +358,15 @@ router.get('/blockchain', async (_req, res) => {
 router.post('/doctors/:id/blockchain/register', async (req, res) => {
   try {
     const result = await registerDoctorOnChain(req.params.id);
+    if (!result.alreadyRegistered) {
+      await logAudit({
+        eventType: 'DOCTOR_CHAIN_REGISTERED',
+        entityType: 'DOCTOR',
+        entityId: req.params.id,
+        actor: actorOf(req),
+        data: { wallet: result.address, txHash: result.txHash ?? null }
+      });
+    }
     return res.json({
       success: true,
       message: result.alreadyRegistered ? 'Doctor is already registered on-chain.' : 'Doctor registered on-chain.',
@@ -338,10 +382,48 @@ router.post('/doctors/:id/blockchain/status', async (req, res) => {
   try {
     const { active } = z.object({ active: z.boolean() }).parse(req.body);
     const result = await setDoctorChainActive(req.params.id, active);
+    await logAudit({
+      eventType: 'DOCTOR_CHAIN_STATUS_CHANGED',
+      entityType: 'DOCTOR',
+      entityId: req.params.id,
+      actor: actorOf(req),
+      data: { active, txHash: result.txHash }
+    });
     return res.json({ success: true, message: active ? 'Doctor reinstated on-chain.' : 'Doctor suspended on-chain.', ...result });
   } catch (err: any) {
     if (err instanceof z.ZodError) return res.status(400).json({ success: false, errors: err.errors });
     return res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+});
+
+// 10. Blockchain: anchor pending records + audit checkpoint now instead of waiting for the interval
+router.post('/blockchain/anchor-now', async (_req, res) => {
+  try {
+    const result = await runBatchCycle(true);
+    const status = result.status === 'FAILED' ? 502 : 200;
+    return res.status(status).json({ success: result.status !== 'FAILED', ...result });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 11. Audit log: most recent entries (paginate with ?before=<seq>)
+router.get('/audit', async (req, res) => {
+  try {
+    const limit = Number(req.query.limit) || 50;
+    const before = req.query.before ? Number(req.query.before) : undefined;
+    return res.json({ success: true, entries: await listAuditEntries(limit, before) });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 12. Audit log: recompute the hash chain and compare it with on-chain checkpoints
+router.get('/audit/verify', async (_req, res) => {
+  try {
+    return res.json({ success: true, report: await checkAuditIntegrity() });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 

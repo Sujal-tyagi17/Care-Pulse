@@ -3,6 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { Appointment } from '../types';
 import { PrescriptionModal } from '../components/PrescriptionModal';
+import { IssueCertificateModal } from '../components/IssueCertificateModal';
+import { CERTIFICATE_LABELS, formatCertificatePeriod } from '../components/certificateText';
 import { AIInsightsModal } from '../components/AIInsightsModal';
 import { Sidebar } from '../components/Sidebar';
 import { TopAppBar } from '../components/TopAppBar';
@@ -25,6 +27,7 @@ export const DoctorDashboard: React.FC = () => {
 
   // Active consultation modal
   const [activeConsultationApt, setActiveConsultationApt] = useState<Appointment | null>(null);
+  const [certificateApt, setCertificateApt] = useState<Appointment | null>(null);
 
   const fetchAppointments = async () => {
     setIsLoading(true);
@@ -455,6 +458,35 @@ export const DoctorDashboard: React.FC = () => {
                       )}
                     </div>
                   )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    {apt.certificate ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-white font-semibold">{CERTIFICATE_LABELS[apt.certificate.certificate.type]}</span>
+                        {formatCertificatePeriod(apt.certificate.certificate) && (
+                          <span className="text-on-surface-variant">{formatCertificatePeriod(apt.certificate.certificate)}</span>
+                        )}
+                        <BlockchainBadge status={apt.certificate.status} compact />
+                        <a
+                          href={`/verify?h=${apt.certificate.recordHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-primary hover:underline font-mono"
+                        >
+                          {shortHash(apt.certificate.recordHash, 8, 6)}
+                        </a>
+                      </div>
+                    ) : (
+                      <span className="text-on-surface-variant">No medical certificate issued.</span>
+                    )}
+                    <button
+                      onClick={() => setCertificateApt(apt)}
+                      className="px-3 py-1.5 font-bold text-white bg-surface-container hover:bg-surface-container-high rounded-xl border border-white/10 transition-colors flex items-center gap-1 font-heading"
+                    >
+                      <span className="material-symbols-outlined text-sm text-tertiary">workspace_premium</span>
+                      {apt.certificate ? 'Re-issue certificate' : 'Issue certificate'}
+                    </button>
+                  </div>
                 </div>
               ))}
 
@@ -518,6 +550,17 @@ export const DoctorDashboard: React.FC = () => {
           onClose={() => setActiveConsultationApt(null)}
           onSuccess={() => {
             setActiveConsultationApt(null);
+            fetchAppointments();
+          }}
+        />
+      )}
+
+      {certificateApt && (
+        <IssueCertificateModal
+          appointment={certificateApt}
+          onClose={() => setCertificateApt(null)}
+          onIssued={() => {
+            setCertificateApt(null);
             fetchAppointments();
           }}
         />

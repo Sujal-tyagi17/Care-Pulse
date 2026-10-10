@@ -6,6 +6,8 @@ async function main() {
 
   // Clear existing records
   await prisma.blockchainRecord.deleteMany();
+  await prisma.anchorBatch.deleteMany();
+  await prisma.auditLog.deleteMany();
   await prisma.notificationLog.deleteMany();
   await prisma.medicationReminder.deleteMany();
   await prisma.postVisitSummary.deleteMany();

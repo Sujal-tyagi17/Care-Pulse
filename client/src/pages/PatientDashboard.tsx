@@ -14,7 +14,8 @@ import { TopAppBar } from '../components/TopAppBar';
 import { FluidShaderCanvas } from '../components/FluidShaderCanvas';
 import { formatDoctorName } from '../utils/format';
 import { BlockchainBadge } from '../components/BlockchainBadge';
-import { PrescriptionCertificateModal } from '../components/PrescriptionCertificateModal';
+import { VerifiableDocumentModal } from '../components/VerifiableDocumentModal';
+import { CERTIFICATE_LABELS } from '../components/certificateText';
 
 const DOCTOR_AVATARS: Record<string, string> = {
   'Cardiology': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=400&q=80',
@@ -56,7 +57,7 @@ export const PatientDashboard: React.FC = () => {
 
   // Appointments & Medications State
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [certificateApt, setCertificateApt] = useState<Appointment | null>(null);
+  const [docView, setDocView] = useState<{ apt: Appointment; kind: 'prescription' | 'certificate' } | null>(null);
   const [medications, setMedications] = useState<MedicationReminderItem[]>([]);
   const [loadingUserData, setLoadingUserData] = useState(false);
 
@@ -704,11 +705,26 @@ export const PatientDashboard: React.FC = () => {
                         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                           <BlockchainBadge status={apt.blockchainRecord.status} />
                           <button
-                            onClick={() => setCertificateApt(apt)}
+                            onClick={() => setDocView({ apt, kind: 'prescription' })}
                             className="px-3 py-1.5 text-xs font-bold text-white bg-surface-container hover:bg-surface-container-high rounded-xl border border-white/10 transition-colors flex items-center gap-1 font-heading"
                           >
                             <span className="material-symbols-outlined text-sm text-primary">qr_code_2</span>
                             Verifiable prescription
+                          </button>
+                        </div>
+                      )}
+                      {apt.certificate && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/5">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-white font-semibold">{CERTIFICATE_LABELS[apt.certificate.certificate.type]}</span>
+                            <BlockchainBadge status={apt.certificate.status} compact />
+                          </div>
+                          <button
+                            onClick={() => setDocView({ apt, kind: 'certificate' })}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-surface-container hover:bg-surface-container-high rounded-xl border border-white/10 transition-colors flex items-center gap-1 font-heading"
+                          >
+                            <span className="material-symbols-outlined text-sm text-primary">workspace_premium</span>
+                            View & print
                           </button>
                         </div>
                       )}
@@ -830,9 +846,7 @@ export const PatientDashboard: React.FC = () => {
       )}
 
       {/* AI Clinical Intelligence & Symptom Insights Modal */}
-      {certificateApt && (
-        <PrescriptionCertificateModal appointment={certificateApt} onClose={() => setCertificateApt(null)} />
-      )}
+      {docView && <VerifiableDocumentModal appointment={docView.apt} kind={docView.kind} onClose={() => setDocView(null)} />}
 
       {showAIModal && (
         <AIInsightsModal onClose={() => setShowAIModal(false)} />

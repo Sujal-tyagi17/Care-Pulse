@@ -86,6 +86,7 @@ export interface Appointment {
   postVisitSummary?: PostVisitSummary | null;
   medicationRemindersCount?: number;
   blockchainRecord?: BlockchainRecordSummary | null;
+  certificate?: CertificateSummary | null;
 }
 
 export interface MedicationReminderItem {
@@ -132,7 +133,23 @@ export interface BlockchainRecordSummary {
   anchoredAt: string | null;
   doctorAddress: string;
   chainId: number;
+  anchorMode?: 'SINGLE' | 'BATCH';
+  batchId?: number | null;
   lastError?: string | null;
+}
+
+export type CertificateType = 'SICK_LEAVE' | 'FITNESS' | 'VISIT';
+
+export interface CertificateDetails {
+  type: CertificateType;
+  fromDate: string | null;
+  toDate: string | null;
+  remarks: string;
+}
+
+export interface CertificateSummary extends BlockchainRecordSummary {
+  issuedAt: string;
+  certificate: CertificateDetails;
 }
 
 export type VerificationVerdict = 'VALID' | 'REVOKED' | 'PENDING' | 'NOT_FOUND' | 'TAMPERED' | 'UNAVAILABLE';
@@ -146,9 +163,40 @@ export interface OnChainRecord {
   doctorCurrentlyActive: boolean;
   issuedAt: number;
   recordType: string;
+  mode?: 'SINGLE' | 'BATCH';
+  batchId?: number;
+  batchCheck?: BatchCheck;
 }
 
-export interface VerifiablePrescription {
+export type BatchCheck =
+  | 'VALID'
+  | 'UNKNOWN_BATCH'
+  | 'NOT_IN_BATCH'
+  | 'SIGNER_NOT_REGISTERED'
+  | 'DOCTOR_SUSPENDED_AT_ANCHOR_TIME'
+  | 'SIGNATURE_EXPIRED_BEFORE_ANCHOR';
+
+/** Everything needed to re-check a record against the chain without the CarePulse server. */
+export interface AnchorBundle {
+  mode: 'SINGLE' | 'BATCH';
+  chainId: number;
+  registry: string;
+  recordType: string;
+  doctor: string;
+  signature: string;
+  deadline: number;
+  batchId: number | null;
+  proof: string[] | null;
+}
+
+/** Downloadable file: the signed document plus its anchor proof. */
+export interface VerifiableFile {
+  carepulseVerifiable: 1;
+  document: VerifiableDocument;
+  anchor: AnchorBundle | null;
+}
+
+interface VerifiableDocumentBase {
   schema: string;
   recordType: string;
   recordId: string;
@@ -157,6 +205,15 @@ export interface VerifiablePrescription {
   issuer: { name: string; specialization: string; wallet: string; registry: string; chainId: number };
   patient: { name: string };
   appointment: { id: string; date: string };
+}
+
+export interface VerifiableCertificate extends VerifiableDocumentBase {
+  certificate: CertificateDetails;
+}
+
+export type VerifiableDocument = VerifiablePrescription | VerifiableCertificate;
+
+export interface VerifiablePrescription extends VerifiableDocumentBase {
   medications: Array<{ medicineName: string; dosage: string; frequency: string; durationDays: number; instructions: string }>;
   clinicalNotesHash: string;
 }
@@ -167,16 +224,19 @@ export interface VerificationResult {
   chainError: string | null;
   network: { chainId: number; contractAddress: string; explorerUrl: string | null } | null;
   onChain: OnChainRecord | null;
+  anchor?: AnchorBundle | null;
+  nextBatchAt?: string | null;
   record: {
     recordType: string;
     status: BlockchainRecordStatus;
     isCurrent: boolean;
+    anchorMode?: 'SINGLE' | 'BATCH';
     txHash: string | null;
     txUrl: string | null;
     revokeTxHash: string | null;
     anchoredAt: string | null;
     payloadIntact: boolean | null;
-    payload: VerifiablePrescription | null;
+    payload: VerifiableDocument | null;
     canonicalPayload: string | null;
   } | null;
   demo?: boolean;
@@ -193,10 +253,29 @@ export interface BlockchainOverview {
     relayerBalanceWei: string;
     relayerIsOwner: boolean;
     totalRecords: number;
+    totalBatches?: number;
     registeredDoctors: number;
     latestBlock: number;
   } | null;
   networkError: string | null;
+  batching?: {
+    mode: 'SINGLE' | 'BATCH';
+    intervalMinutes: number;
+    pendingRecords: number;
+    nextBatchAt: string | null;
+    recentBatches: Array<{
+      id: string;
+      onChainBatchId: number | null;
+      leafCount: number;
+      auditSeq: number;
+      status: 'SUBMITTED' | 'CONFIRMED' | 'FAILED';
+      txHash: string | null;
+      txUrl: string | null;
+      createdAt: string;
+      anchoredAt: string | null;
+      lastError: string | null;
+    }>;
+  };
   recordCounts: Record<string, number>;
   doctors: Array<{
     id: string;
@@ -217,4 +296,34 @@ export interface BlockchainOverview {
     doctorName: string;
   }>;
   demo?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Audit log
+// ---------------------------------------------------------------------------
+
+export interface AuditEntry {
+  seq: number;
+  eventType: string;
+  entityType: string;
+  entityId: string;
+  actorRole: string | null;
+  actorName: string | null;
+  data: Record<string, unknown>;
+  occurredAt: string;
+  entryHash: string;
+}
+
+export interface AuditIntegrityReport {
+  totalEntries: number;
+  chainIntact: boolean;
+  firstBreak: { seq: number; reason: 'HASH_MISMATCH' | 'BROKEN_LINK' | 'SEQUENCE_GAP' } | null;
+  checkpointsVerified: number;
+  checkpointMismatch: { onChainBatchId: number; auditSeq: number } | null;
+  latestCheckpoint: { onChainBatchId: number; auditSeq: number; anchoredAt: string; txHash: string | null } | null;
+  latestCheckpointTxUrl?: string | null;
+  unanchoredEntries: number;
+  verdict: 'INTACT' | 'TAMPERED' | 'INTACT_NOT_ANCHORED';
+  checkpointSource?: 'blockchain' | 'database';
+  checkedAt: string;
 }
