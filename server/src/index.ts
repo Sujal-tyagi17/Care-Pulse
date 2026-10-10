@@ -16,6 +16,7 @@ import appointmentRoutes from './routes/appointment.routes.js';
 import consultationRoutes from './routes/consultation.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import verifyRoutes from './routes/verify.routes.js';
 import { startBackgroundSchedulers } from './services/scheduler.service.js';
 
 dotenv.config();
@@ -41,6 +42,7 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/consultations', consultationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/verify', verifyRoutes);
 
 // Health Check
 app.get('/api/health', (_req, res) => {

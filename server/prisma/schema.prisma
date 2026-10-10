@@ -36,6 +36,12 @@ model DoctorProfile {
   workingDays         String   @default("1,2,3,4,5") // Mon-Fri
   consultationFee     Float    @default(50.0)
   roomNumber          String?  @default("Room 101")
+
+  // Blockchain identity: the doctor's signing wallet and on-chain verification status
+  walletAddress       String?   @unique
+  chainRegisteredAt   DateTime?
+  chainRegistrationTx String?
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
@@ -84,6 +90,7 @@ model Appointment {
   preVisitSummary      PreVisitSummary?
   postVisitSummary     PostVisitSummary?
   medicationReminders  MedicationReminder[]
+  blockchainRecords    BlockchainRecord[]
 
   @@index([doctorId, date, startTime])
   @@index([patientId])
@@ -148,4 +155,35 @@ model NotificationLog {
   updatedAt      DateTime @updatedAt
 
   @@index([status, retryCount])
+}
+
+// Off-chain half of a blockchain-anchored medical record.
+// Only `recordHash` is written on-chain; the payload (which contains patient data)
+// stays here. The random salt makes the hash impossible to brute-force back to content.
+model BlockchainRecord {
+  id                String      @id @default(uuid())
+  appointmentId     String
+  appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  recordType        String      // PRESCRIPTION, CLINICAL_SUMMARY, MEDICAL_CERTIFICATE
+  recordHash        String      @unique // 0x-prefixed SHA-256 of canonicalPayload
+  canonicalPayload  String      // exact canonical JSON that was hashed (includes salt)
+  doctorAddress     String
+  signature         String      // doctor's EIP-712 signature authorising the anchor
+  signatureDeadline Int         // unix seconds
+  chainId           Int
+  contractAddress   String
+  status            String      @default("PENDING") // PENDING, SUBMITTED, CONFIRMED, FAILED, SUPERSEDED, REVOKED
+  isCurrent         Boolean     @default(true) // false once replaced by an edited record
+  txHash            String?
+  blockNumber       Int?
+  anchoredAt        DateTime?
+  revokeTxHash      String?
+  revokedAt         DateTime?
+  attempts          Int         @default(0)
+  lastError         String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([appointmentId, isCurrent])
+  @@index([status, attempts])
 }

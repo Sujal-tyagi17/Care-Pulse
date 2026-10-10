@@ -5,12 +5,14 @@ interface SidebarProps {
   activeTab?: string;
   onTabChange?: (tab: string) => void;
   onOpenAIInsights?: () => void;
+  extraItems?: Array<{ label: string; icon: string }>;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab = 'Dashboard',
   onTabChange,
-  onOpenAIInsights
+  onOpenAIInsights,
+  extraItems = []
 }) => {
   const { user, logout } = useAuth();
 
@@ -18,7 +20,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { label: 'Dashboard', icon: 'dashboard' },
     { label: 'Schedule', icon: 'calendar_today' },
     { label: 'Records', icon: 'folder_shared' },
-    { label: 'Settings', icon: 'settings' }
+    { label: 'Settings', icon: 'settings' },
+    ...extraItems
   ];
 
   return (

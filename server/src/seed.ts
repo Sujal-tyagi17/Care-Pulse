@@ -5,6 +5,7 @@ async function main() {
   console.log('🌱 Starting Healthcare platform database seed...');
 
   // Clear existing records
+  await prisma.blockchainRecord.deleteMany();
   await prisma.notificationLog.deleteMany();
   await prisma.medicationReminder.deleteMany();
   await prisma.postVisitSummary.deleteMany();

@@ -5,6 +5,12 @@ import { prisma } from '../db.js';
 import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 import { sendEmailNotification, getDoctorLeaveCancellationHtml, formatDoctorName } from '../services/email.service.js';
 import { deleteGoogleCalendarEvent } from '../services/calendar.service.js';
+import {
+  ensureDoctorWallet,
+  registerDoctorOnChain,
+  setDoctorChainActive,
+  getBlockchainOverview
+} from '../services/blockchain.service.js';
 
 const router = Router();
 
@@ -100,6 +106,10 @@ router.post('/doctors', async (req, res) => {
       },
       include: { doctorProfile: true }
     });
+
+    // Give the new doctor a signing wallet (registration on-chain is a separate, explicit admin step)
+    const walletAddress = await ensureDoctorWallet(doctor.id).catch(() => null);
+    if (walletAddress && doctor.doctorProfile) doctor.doctorProfile.walletAddress = walletAddress;
 
     return res.status(201).json({
       success: true,
@@ -297,6 +307,41 @@ router.delete('/doctors/:id/leaves/:leaveDate', async (req, res) => {
     return res.json({ success: true, message: `Leave for ${leaveDate} removed.` });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 7. Blockchain: registry overview (network, relayer, doctor verification, recent anchors)
+router.get('/blockchain', async (_req, res) => {
+  try {
+    return res.json({ success: true, ...(await getBlockchainOverview()) });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 8. Blockchain: verify a doctor on-chain so their signed prescriptions are accepted
+router.post('/doctors/:id/blockchain/register', async (req, res) => {
+  try {
+    const result = await registerDoctorOnChain(req.params.id);
+    return res.json({
+      success: true,
+      message: result.alreadyRegistered ? 'Doctor is already registered on-chain.' : 'Doctor registered on-chain.',
+      ...result
+    });
+  } catch (err: any) {
+    return res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+});
+
+// 9. Blockchain: suspend / reinstate a doctor (existing records stay valid)
+router.post('/doctors/:id/blockchain/status', async (req, res) => {
+  try {
+    const { active } = z.object({ active: z.boolean() }).parse(req.body);
+    const result = await setDoctorChainActive(req.params.id, active);
+    return res.json({ success: true, message: active ? 'Doctor reinstated on-chain.' : 'Doctor suspended on-chain.', ...result });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) return res.status(400).json({ success: false, errors: err.errors });
+    return res.status(err.status || 500).json({ success: false, message: err.message });
   }
 });
 

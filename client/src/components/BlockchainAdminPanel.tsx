@@ -1,0 +1,256 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { ShieldCheck, ShieldOff, RefreshCw, Loader2, ExternalLink, Wallet, Boxes, FileCheck2, AlertTriangle } from 'lucide-react';
+import { api } from '../api/client';
+import { BlockchainOverview } from '../types';
+import { BlockchainBadge } from './BlockchainBadge';
+import { networkName, shortHash } from '../blockchain/chain';
+
+const formatBalance = (wei: string) => {
+  try {
+    const n = Number(BigInt(wei) / 10n ** 12n) / 1e6; // to 6 decimals without float overflow
+    return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  } catch {
+    return '—';
+  }
+};
+
+const Stat: React.FC<{ label: string; value: React.ReactNode; Icon: React.ElementType }> = ({ label, value, Icon }) => (
+  <div className="glass-card rounded-2xl p-4 border border-white/10 flex items-center gap-3">
+    <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20">
+      <Icon className="w-5 h-5" />
+    </div>
+    <div className="min-w-0">
+      <p className="text-[11px] text-on-surface-variant">{label}</p>
+      <p className="font-heading font-extrabold text-white text-lg truncate">{value}</p>
+    </div>
+  </div>
+);
+
+export const BlockchainAdminPanel: React.FC = () => {
+  const [data, setData] = useState<BlockchainOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busyDoctor, setBusyDoctor] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await api.getBlockchainOverview());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const act = async (doctorId: string, fn: () => Promise<{ message: string; txHash?: string | null }>) => {
+    setBusyDoctor(doctorId);
+    setMessage(null);
+    try {
+      const res = await fn();
+      setMessage({ type: 'ok', text: res.txHash ? `${res.message} Tx ${shortHash(res.txHash, 8, 6)}` : res.message });
+      await load();
+    } catch (err) {
+      setMessage({ type: 'error', text: (err as Error).message });
+    } finally {
+      setBusyDoctor(null);
+    }
+  };
+
+  const net = data?.network;
+  const counts = data?.recordCounts ?? {};
+
+  return (
+    <>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+        <div>
+          <h1 className="font-heading font-extrabold text-2xl md:text-3xl text-white mb-1">Blockchain Prescription Registry</h1>
+          <p className="text-xs sm:text-sm text-on-surface-variant max-w-2xl">
+            Verify doctors on-chain so their signed prescriptions are accepted, and monitor anchoring. Only salted fingerprints
+            are written to the chain; no patient data ever leaves the database.
+          </p>
+        </div>
+        <button
+          onClick={load}
+          disabled={loading}
+          className="px-4 py-2 bg-primary/15 hover:bg-primary/25 text-primary border border-primary/30 rounded-xl text-xs font-heading font-bold transition-all flex items-center gap-1.5"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Refresh
+        </button>
+      </div>
+
+      {data && !data.enabled && (
+        <div className="glass-card rounded-2xl p-5 border border-amber-400/30 text-xs space-y-1.5">
+          <p className="font-heading font-bold text-amber-300 flex items-center gap-1.5">
+            <AlertTriangle className="w-4 h-4" />
+            {data.demo ? 'Demo mode: no backend connected' : 'Blockchain anchoring is not configured on the server'}
+          </p>
+          <p className="text-on-surface-variant">
+            Deploy the MedicalRegistry contract (<code>cd blockchain && npm run deploy:amoy</code>) and set the{' '}
+            <code>BLOCKCHAIN_*</code> variables in the server's <code>.env</code>. See the Blockchain section of the README.
+          </p>
+        </div>
+      )}
+
+      {data?.networkError && (
+        <div className="glass-card rounded-2xl p-4 border border-red-400/30 text-xs text-red-300">
+          Could not reach the blockchain: {data.networkError}
+        </div>
+      )}
+
+      {net && (
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Stat label="Network" value={networkName(net.chainId)} Icon={Boxes} />
+          <Stat label="Records anchored on-chain" value={net.totalRecords} Icon={FileCheck2} />
+          <Stat label="Verified doctors on-chain" value={net.registeredDoctors} Icon={ShieldCheck} />
+          <Stat label="Relayer gas balance" value={formatBalance(net.relayerBalanceWei)} Icon={Wallet} />
+        </section>
+      )}
+
+      {net && (
+        <section className="glass-card rounded-2xl p-5 border border-white/10 text-xs grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5">
+          <span className="text-on-surface-variant">Registry contract</span>
+          <span className="font-mono text-white break-all">
+            {net.contractUrl ? (
+              <a href={net.contractUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                {net.contractAddress} <ExternalLink className="w-3 h-3" />
+              </a>
+            ) : (
+              net.contractAddress
+            )}
+          </span>
+          <span className="text-on-surface-variant">Hospital relayer</span>
+          <span className="font-mono text-white break-all">
+            {net.relayerAddress}{' '}
+            {!net.relayerIsOwner && <span className="text-red-300 font-sans">(not the contract owner — doctor registration will fail)</span>}
+          </span>
+          <span className="text-on-surface-variant">Anchoring queue</span>
+          <span className="text-white">
+            {['CONFIRMED', 'PENDING', 'SUBMITTED', 'FAILED', 'REVOKED'].map((k) => `${k.toLowerCase()}: ${counts[k] ?? 0}`).join(' · ')}
+          </span>
+        </section>
+      )}
+
+      {message && (
+        <div
+          className={`rounded-xl px-4 py-3 text-xs border ${
+            message.type === 'ok' ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-red-400/30 bg-red-500/10 text-red-300'
+          }`}
+        >
+          {message.text}
+        </div>
+      )}
+
+      <section className="glass-card rounded-2xl border border-white/10 overflow-hidden">
+        <div className="px-5 py-4 border-b border-white/10">
+          <h3 className="font-heading font-extrabold text-sm text-white">Doctor registry</h3>
+          <p className="text-[11px] text-on-surface-variant">A doctor's prescriptions are only accepted on-chain after you verify them here.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="text-on-surface-variant text-left">
+              <tr className="border-b border-white/5">
+                <th className="px-5 py-2.5 font-semibold">Doctor</th>
+                <th className="px-5 py-2.5 font-semibold">Signing wallet</th>
+                <th className="px-5 py-2.5 font-semibold">On-chain status</th>
+                <th className="px-5 py-2.5 font-semibold text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.doctors ?? []).map((d) => (
+                <tr key={d.id} className="border-b border-white/5 last:border-0">
+                  <td className="px-5 py-3">
+                    <p className="text-white font-semibold">{d.name}</p>
+                    <p className="text-on-surface-variant">{d.specialization}</p>
+                  </td>
+                  <td className="px-5 py-3 font-mono text-on-surface-variant">
+                    {d.walletAddress ? (
+                      d.walletUrl ? (
+                        <a href={d.walletUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                          {shortHash(d.walletAddress)}
+                        </a>
+                      ) : (
+                        shortHash(d.walletAddress)
+                      )
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="px-5 py-3">
+                    {!d.registeredOnChain ? (
+                      <span className="text-on-surface-variant">Not verified</span>
+                    ) : d.activeOnChain ? (
+                      <span className="inline-flex items-center gap-1 text-emerald-300 font-bold">
+                        <ShieldCheck className="w-3.5 h-3.5" /> Verified
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-red-300 font-bold">
+                        <ShieldOff className="w-3.5 h-3.5" /> Suspended
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3 text-right">
+                    {data?.enabled &&
+                      (busyDoctor === d.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin inline text-primary" />
+                      ) : !d.registeredOnChain ? (
+                        <button
+                          onClick={() => act(d.id, () => api.registerDoctorOnChain(d.id))}
+                          className="px-3 py-1.5 rounded-lg bg-primary text-on-primary font-heading font-bold"
+                        >
+                          Verify on-chain
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => act(d.id, () => api.setDoctorChainStatus(d.id, !d.activeOnChain))}
+                          className={`px-3 py-1.5 rounded-lg border font-heading font-bold ${
+                            d.activeOnChain ? 'border-red-400/40 text-red-300 hover:bg-red-500/10' : 'border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/10'
+                          }`}
+                        >
+                          {d.activeOnChain ? 'Suspend' : 'Reinstate'}
+                        </button>
+                      ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {data && data.recentRecords.length > 0 && (
+        <section className="glass-card rounded-2xl border border-white/10 overflow-hidden">
+          <div className="px-5 py-4 border-b border-white/10">
+            <h3 className="font-heading font-extrabold text-sm text-white">Recent records</h3>
+          </div>
+          <div className="divide-y divide-white/5">
+            {data.recentRecords.map((r) => (
+              <div key={r.recordHash} className="px-5 py-3 flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-xs">
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-semibold">
+                    {r.patientName} · {r.doctorName}
+                  </p>
+                  <p className="text-on-surface-variant">
+                    Visit {r.appointmentDate} · {r.attempts} attempt{r.attempts === 1 ? '' : 's'}
+                    {r.lastError && r.status !== 'CONFIRMED' ? ` · ${r.lastError}` : ''}
+                  </p>
+                </div>
+                <a href={`/verify?h=${r.recordHash}`} target="_blank" rel="noreferrer" className="font-mono text-primary hover:underline">
+                  {shortHash(r.recordHash, 8, 6)}
+                </a>
+                {r.txUrl && (
+                  <a href={r.txUrl} target="_blank" rel="noreferrer" className="text-on-surface-variant hover:text-primary inline-flex items-center gap-1">
+                    tx <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+                <BlockchainBadge status={r.status} compact />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
+};

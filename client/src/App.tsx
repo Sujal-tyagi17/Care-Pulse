@@ -4,9 +4,15 @@ import { AuthPage } from './pages/AuthPage';
 import { PatientDashboard } from './pages/PatientDashboard';
 import { DoctorDashboard } from './pages/DoctorDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { VerifyPage } from './pages/VerifyPage';
 
 export const App: React.FC = () => {
   const { user, isLoading } = useAuth();
+
+  // Public prescription verification (QR code target) — no login required.
+  if (window.location.pathname.startsWith('/verify')) {
+    return <VerifyPage />;
+  }
 
   if (isLoading) {
     return (

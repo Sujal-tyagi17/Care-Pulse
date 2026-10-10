@@ -5,6 +5,7 @@ import { AIInsightsModal } from '../components/AIInsightsModal';
 import { Sidebar } from '../components/Sidebar';
 import { TopAppBar } from '../components/TopAppBar';
 import { FluidShaderCanvas } from '../components/FluidShaderCanvas';
+import { BlockchainAdminPanel } from '../components/BlockchainAdminPanel';
 
 const DOCTOR_AVATARS: Record<string, string> = {
   'Cardiology': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=400&q=80',
@@ -15,7 +16,7 @@ const DOCTOR_AVATARS: Record<string, string> = {
 };
 
 export const AdminDashboard: React.FC = () => {
-  const [navTab, setNavTab] = useState<'Dashboard' | 'Schedule' | 'Records' | 'Settings'>('Dashboard');
+  const [navTab, setNavTab] = useState<'Dashboard' | 'Schedule' | 'Records' | 'Settings' | 'Blockchain'>('Dashboard');
   const [showAIModal, setShowAIModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -161,6 +162,7 @@ export const AdminDashboard: React.FC = () => {
         activeTab={navTab}
         onTabChange={(tab) => setNavTab(tab as any)}
         onOpenAIInsights={() => setShowAIModal(true)}
+        extraItems={[{ label: 'Blockchain', icon: 'token' }]}
       />
 
       {/* Top App Bar */}
@@ -574,6 +576,9 @@ export const AdminDashboard: React.FC = () => {
             </section>
           </>
         )}
+
+        {/* BLOCKCHAIN TAB */}
+        {navTab === 'Blockchain' && <BlockchainAdminPanel />}
 
         {/* SETTINGS TAB */}
         {navTab === 'Settings' && (

@@ -14,13 +14,15 @@
     "seed": "tsx src/seed.ts",
     "test:concurrency": "tsx test/concurrency.test.ts",
     "test:e2e": "tsx test/e2e.test.ts",
-    "test": "tsx test/concurrency.test.ts && tsx test/e2e.test.ts"
+    "test": "tsx test/blockchain.integration.test.ts",
+    "test:blockchain": "tsx test/blockchain.integration.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
+    "ethers": "^6.17.0",
     "express": "^4.22.2",
     "googleapis": "^176.0.0",
     "jsonwebtoken": "^9.0.2",

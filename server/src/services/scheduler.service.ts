@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { prisma } from '../db.js';
 import { sendEmailNotification, retryFailedNotifications, getMedicationReminderHtml } from './email.service.js';
+import { processPendingRecords, getChain } from './blockchain.service.js';
 
 /**
  * Background Scheduler Service
@@ -9,6 +10,7 @@ import { sendEmailNotification, retryFailedNotifications, getMedicationReminderH
  * 2. Medication reminders based on prescription frequency
  * 3. Appointment reminders (24h and 1h prior)
  * 4. Failed email retries with exponential backoff
+ * 5. Blockchain anchoring retries for medical records
  */
 
 export function startBackgroundSchedulers() {
@@ -101,6 +103,24 @@ export function startBackgroundSchedulers() {
       }
     } catch (err) {
       console.error('[Scheduler] Error retrying notifications:', (err as Error).message);
+    }
+  });
+
+  // Job 4: Anchor pending / retry failed blockchain records every minute
+  getChain(); // logs whether blockchain anchoring is enabled
+  let anchoringRunning = false;
+  cron.schedule('* * * * *', async () => {
+    if (anchoringRunning) return;
+    anchoringRunning = true;
+    try {
+      const processed = await processPendingRecords();
+      if (processed > 0) {
+        console.log(`[Scheduler] Processed ${processed} pending blockchain record(s).`);
+      }
+    } catch (err) {
+      console.error('[Scheduler] Error in blockchain anchoring worker:', (err as Error).message);
+    } finally {
+      anchoringRunning = false;
     }
   });
 

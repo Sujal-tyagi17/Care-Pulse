@@ -4,7 +4,9 @@ import {
   TimeSlot,
   Appointment,
   MedicationReminderItem,
-  PrescriptionItem
+  PrescriptionItem,
+  VerificationResult,
+  BlockchainOverview
 } from '../types';
 import { MockDataStore } from './mockData';
 
@@ -197,7 +199,7 @@ export const api = {
       if (Array.isArray(data.appointments)) return data;
       throw new Error('Invalid appointments response');
     } catch (err) {
-      return { appointments: MockDataStore.getAppointments(status) };
+      return { appointments: await MockDataStore.attachDemoRecords(MockDataStore.getAppointments(status)) };
     }
   },
 
@@ -390,5 +392,45 @@ export const api = {
         }
       };
     }
+  },
+
+  // Blockchain verification (public — no login required)
+  async verifyRecord(recordHash: string): Promise<VerificationResult | null> {
+    try {
+      const res = await fetch(`${API_BASE}/verify/${encodeURIComponent(recordHash)}`);
+      return await handleResponse<VerificationResult>(res);
+    } catch (err) {
+      // No backend (standalone demo): fall back to demo records; the page still checks the chain directly when configured.
+      return MockDataStore.getDemoVerification(recordHash);
+    }
+  },
+
+  // Blockchain admin
+  async getBlockchainOverview(): Promise<BlockchainOverview> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/blockchain`, { headers: getHeaders() });
+      const data = await handleResponse<BlockchainOverview>(res);
+      if (data && Array.isArray(data.doctors)) return data;
+      throw new Error('Invalid blockchain overview response');
+    } catch (err) {
+      return MockDataStore.getBlockchainOverview();
+    }
+  },
+
+  async registerDoctorOnChain(doctorId: string): Promise<{ message: string; txHash?: string | null }> {
+    const res = await fetch(`${API_BASE}/admin/doctors/${doctorId}/blockchain/register`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  async setDoctorChainStatus(doctorId: string, active: boolean): Promise<{ message: string; txHash?: string }> {
+    const res = await fetch(`${API_BASE}/admin/doctors/${doctorId}/blockchain/status`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ active })
+    });
+    return handleResponse(res);
   }
 };

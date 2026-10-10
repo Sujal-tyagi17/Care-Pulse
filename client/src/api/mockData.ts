@@ -1,4 +1,14 @@
-import { DoctorListItem, Appointment, MedicationReminderItem, NotificationLogItem, TimeSlot } from '../types';
+import {
+  DoctorListItem,
+  Appointment,
+  MedicationReminderItem,
+  NotificationLogItem,
+  TimeSlot,
+  VerificationResult,
+  BlockchainOverview,
+  VerifiablePrescription
+} from '../types';
+import { canonicalize, sha256Hex } from '../blockchain/canonical';
 
 export const INITIAL_MOCK_DOCTORS: DoctorListItem[] = [
   {
@@ -473,5 +483,118 @@ export class MockDataStore {
     const updated = [...doctors, newDoc];
     this.setStorage('doctors_list', updated);
     return newDoc;
+  }
+
+  // -------------------------------------------------------------------------
+  // Blockchain demo mode (no backend): documents are fingerprinted for real in the
+  // browser, but are clearly marked as DEMO because nothing is anchored on-chain.
+  // -------------------------------------------------------------------------
+
+  static async attachDemoRecords(appointments: Appointment[]): Promise<Appointment[]> {
+    const store = this.getStorage<Record<string, string>>('demo_chain_records', {});
+    const byAppointment = this.getStorage<Record<string, string>>('demo_chain_index', {});
+    let changed = false;
+
+    for (const apt of appointments) {
+      if (apt.status !== 'COMPLETED' || !apt.postVisitSummary) continue;
+      let hash = byAppointment[apt.id];
+      if (!hash || !store[hash]) {
+        const salt =
+          '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32))).map((b) => b.toString(16).padStart(2, '0')).join('');
+        const payload: VerifiablePrescription = {
+          schema: 'carepulse.prescription.v1',
+          recordType: 'PRESCRIPTION',
+          recordId: `demo-${apt.id}`,
+          issuedAt: new Date().toISOString(),
+          salt,
+          issuer: {
+            name: apt.doctor?.name || 'CarePulse Doctor',
+            specialization: apt.doctor?.specialization || 'General Medicine',
+            wallet: '0x0000000000000000000000000000000000000000',
+            registry: '0x0000000000000000000000000000000000000000',
+            chainId: 0
+          },
+          patient: { name: apt.patient?.name || 'Patient' },
+          appointment: { id: apt.id, date: apt.date },
+          medications: (apt.postVisitSummary.prescription || []).map((p) => ({
+            medicineName: p.medicineName,
+            dosage: p.dosage,
+            frequency: p.frequency,
+            durationDays: p.durationDays,
+            instructions: p.instructions
+          })),
+          clinicalNotesHash: await sha256Hex(apt.postVisitSummary.clinicalNotes || '')
+        };
+        const canonical = canonicalize(payload);
+        hash = await sha256Hex(canonical);
+        store[hash] = canonical;
+        byAppointment[apt.id] = hash;
+        changed = true;
+      }
+      apt.blockchainRecord = {
+        recordHash: hash,
+        recordType: 'PRESCRIPTION',
+        status: 'DEMO',
+        txHash: null,
+        txUrl: null,
+        anchoredAt: null,
+        doctorAddress: '0x0000000000000000000000000000000000000000',
+        chainId: 0
+      };
+    }
+
+    if (changed) {
+      this.setStorage('demo_chain_records', store);
+      this.setStorage('demo_chain_index', byAppointment);
+    }
+    return appointments;
+  }
+
+  static getDemoVerification(recordHash: string): VerificationResult | null {
+    const store = this.getStorage<Record<string, string>>('demo_chain_records', {});
+    const canonical = store[recordHash.toLowerCase()];
+    if (!canonical) return null;
+    return {
+      recordHash: recordHash.toLowerCase(),
+      verdict: 'UNAVAILABLE',
+      chainError: 'Demo mode: no backend connected, so this record was fingerprinted in your browser but never anchored on-chain.',
+      network: null,
+      onChain: null,
+      record: {
+        recordType: 'PRESCRIPTION',
+        status: 'DEMO',
+        isCurrent: true,
+        txHash: null,
+        txUrl: null,
+        revokeTxHash: null,
+        anchoredAt: null,
+        payloadIntact: true,
+        payload: JSON.parse(canonical),
+        canonicalPayload: canonical
+      },
+      demo: true
+    };
+  }
+
+  static getBlockchainOverview(): BlockchainOverview {
+    const doctors = this.getDoctors();
+    return {
+      enabled: false,
+      network: null,
+      networkError: null,
+      recordCounts: {},
+      doctors: doctors.map((d) => ({
+        id: d.id,
+        name: d.name,
+        specialization: d.specialization,
+        walletAddress: null,
+        walletUrl: null,
+        registeredOnChain: false,
+        activeOnChain: false,
+        registrationTx: null
+      })),
+      recentRecords: [],
+      demo: true
+    };
   }
 }

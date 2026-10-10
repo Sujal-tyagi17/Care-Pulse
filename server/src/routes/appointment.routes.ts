@@ -8,6 +8,7 @@ import { generatePreVisitSummary } from '../services/llm.service.js';
 import { sendEmailNotification, getBookingConfirmationHtml, formatDoctorName } from '../services/email.service.js';
 import { syncGoogleCalendarEvent, generateIcsContent, deleteGoogleCalendarEvent } from '../services/calendar.service.js';
 import { getISTDateAndTime } from './doctor.routes.js';
+import { toRecordSummary } from '../services/blockchain.service.js';
 
 const router = Router();
 
@@ -337,7 +338,8 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
         },
         preVisitSummary: true,
         postVisitSummary: true,
-        medicationReminders: true
+        medicationReminders: true,
+        blockchainRecords: { where: { isCurrent: true }, take: 1 }
       },
       orderBy: [{ date: 'desc' }, { startTime: 'desc' }]
     });
@@ -369,7 +371,8 @@ router.get('/', requireAuth, async (req: AuthRequest, res) => {
         patientFriendlySummary: apt.postVisitSummary.patientFriendlySummary,
         followUpSteps: apt.postVisitSummary.followUpSteps
       } : null,
-      medicationRemindersCount: apt.medicationReminders.length
+      medicationRemindersCount: apt.medicationReminders.length,
+      blockchainRecord: apt.blockchainRecords[0] ? toRecordSummary(apt.blockchainRecords[0]) : null
     }));
 
     return res.json({ success: true, appointments: formatted });

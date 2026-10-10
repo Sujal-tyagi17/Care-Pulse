@@ -8,6 +8,8 @@ import { Sidebar } from '../components/Sidebar';
 import { TopAppBar } from '../components/TopAppBar';
 import { FluidShaderCanvas } from '../components/FluidShaderCanvas';
 import { formatDoctorName } from '../utils/format';
+import { BlockchainBadge } from '../components/BlockchainBadge';
+import { shortHash } from '../blockchain/chain';
 
 export const DoctorDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -434,6 +436,23 @@ export const DoctorDashboard: React.FC = () => {
                         <p className="font-heading font-bold text-on-surface-variant">Clinical Notes:</p>
                         <p className="text-on-surface-variant/90">{apt.postVisitSummary.clinicalNotes}</p>
                       </div>
+                      {apt.blockchainRecord && (
+                        <div className="pt-2 border-t border-white/5 flex flex-wrap items-center gap-2">
+                          <BlockchainBadge status={apt.blockchainRecord.status} compact />
+                          <a
+                            href={`/verify?h=${apt.blockchainRecord.recordHash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] text-primary hover:underline font-mono"
+                            title="Open the public verification page for this prescription"
+                          >
+                            {shortHash(apt.blockchainRecord.recordHash, 8, 6)}
+                          </a>
+                          {apt.blockchainRecord.lastError && (
+                            <span className="text-[11px] text-orange-300">{apt.blockchainRecord.lastError}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

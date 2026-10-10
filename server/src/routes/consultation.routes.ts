@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '../middleware/auth.middleware.js';
 import { AuthRequest, PrescriptionItem } from '../types.js';
 import { generatePostVisitSummary } from '../services/llm.service.js';
 import { sendEmailNotification, getPostVisitSummaryHtml, formatDoctorName } from '../services/email.service.js';
+import { createPrescriptionRecord, toRecordSummary } from '../services/blockchain.service.js';
 
 const router = Router();
 
@@ -129,6 +130,25 @@ router.post('/:appointmentId/post-visit', requireAuth, requireRole(['DOCTOR', 'A
       });
     }
 
+    // Fingerprint the prescription, have the doctor's key sign it, and queue it for on-chain anchoring.
+    // A blockchain problem must never block the consultation itself.
+    let blockchainRecord = null;
+    try {
+      const rec = await createPrescriptionRecord({
+        appointmentId,
+        doctorUserId: apt.doctorId, // always the assigned doctor's key, even when an admin submits
+        doctorName: apt.doctor.name,
+        specialization: apt.doctor.doctorProfile?.specialization ?? 'General',
+        patientName: apt.patient.name,
+        appointmentDate: apt.date,
+        clinicalNotes,
+        prescriptions
+      });
+      blockchainRecord = rec ? toRecordSummary(rec) : null;
+    } catch (chainErr) {
+      console.error('[Blockchain] Could not create prescription record:', (chainErr as Error).message);
+    }
+
     // Send email to patient with patient-friendly summary
     const doctorDisplayName = formatDoctorName(apt.doctor.name);
     await sendEmailNotification({
@@ -156,7 +176,8 @@ router.post('/:appointmentId/post-visit', requireAuth, requireRole(['DOCTOR', 'A
         patientFriendlySummary: savedSummary.patientFriendlySummary,
         followUpSteps: savedSummary.followUpSteps,
         prescriptions
-      }
+      },
+      blockchainRecord
     });
   } catch (err: any) {
     if (err instanceof z.ZodError) {

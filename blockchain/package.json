@@ -1,0 +1,27 @@
+{
+  "name": "carepulse-blockchain",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MedicalRegistry smart contract: verified doctor registry and tamper-proof prescription anchoring",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:amoy": "hardhat run scripts/deploy.ts --network amoy",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "export-abi": "hardhat run scripts/export-abi.ts"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@types/node": "^26.6.5",
+    "dotenv": "^18.0.7",
+    "hardhat": "^2.29.1",
+    "solc": "^0.8.24",
+    "ts-node": "^10.9.2",
+    "typescript": "5.9"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.6.1"
+  }
+}

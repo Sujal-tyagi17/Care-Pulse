@@ -10,8 +10,12 @@
 [![Prisma ORM](https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge\&logo=prisma\&logoColor=white)](https://www.prisma.io/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge\&logo=tailwind-css\&logoColor=white)](https://tailwindcss.com/)
 [![Google Gemini](https://img.shields.io/badge/Google_Gemini-8E75B2?style=for-the-badge\&logo=google\&logoColor=white)](https://ai.google.dev/)
+[![Solidity](https://img.shields.io/badge/Solidity_0.8.24-363636?style=for-the-badge\&logo=solidity\&logoColor=white)](https://soliditylang.org/)
+[![Hardhat](https://img.shields.io/badge/Hardhat-FFF100?style=for-the-badge\&logo=hardhat\&logoColor=black)](https://hardhat.org/)
+[![ethers.js](https://img.shields.io/badge/ethers.js_v6-2535A0?style=for-the-badge\&logo=ethereum\&logoColor=white)](https://docs.ethers.org/v6/)
+[![Polygon](https://img.shields.io/badge/Polygon_Amoy-7B3FE4?style=for-the-badge\&logo=polygon\&logoColor=white)](https://polygon.technology/)
 
-A full-stack healthcare appointment management platform engineered with modern dark-mode clinical glassmorphism, animated WebGL backgrounds, AI-powered symptom triage, post-visit clinical translations, calendar synchronization, temporary appointment holds, and automated medication reminders.
+A full-stack healthcare appointment management platform engineered with modern dark-mode clinical glassmorphism, animated WebGL backgrounds, AI-powered symptom triage, post-visit clinical translations, calendar synchronization, temporary appointment holds, automated medication reminders, and **blockchain-verified, tamper-proof prescriptions** that any pharmacy can check without trusting the hospital's servers.
 
 ---
 
@@ -44,13 +48,14 @@ A full-stack healthcare appointment management platform engineered with modern d
 1. [Tech Stack](#-tech-stack)
 2. [Core System Capabilities](#-core-system-capabilities)
 3. [Key Architectural Highlights](#-key-architectural-highlights)
-4. [Testing Credentials](#-testing-credentials)
-5. [Directory Structure](#-directory-structure)
-6. [Getting Started](#-getting-started)
-7. [Environment Variables](#-environment-variables)
-8. [API Endpoint Reference](#-api-endpoint-reference)
-9. [Deployment Architecture](#-deployment-architecture)
-10. [License](#-license)
+4. [Blockchain Prescription Verification](#%EF%B8%8F-blockchain-prescription-verification)
+5. [Testing Credentials](#-testing-credentials)
+6. [Directory Structure](#-directory-structure)
+7. [Getting Started](#-getting-started)
+8. [Environment Variables](#-environment-variables)
+9. [API Endpoint Reference](#-api-endpoint-reference)
+10. [Deployment Architecture](#-deployment-architecture)
+11. [License](#-license)
 
 ---
 
@@ -118,6 +123,7 @@ A full-stack healthcare appointment management platform engineered with modern d
 * **Doctor Leave Management:** Identify conflicting appointments and transition affected bookings to `REQUIRES_RESCHEDULE`.
 * **Rescheduling Notifications:** Automatically send patients direct rescheduling links.
 * **Notification Audit Log:** Track pending, sent, and failed transactional notifications.
+* **Blockchain Doctor Registry:** Verify, suspend, or reinstate doctors on-chain and monitor prescription anchoring.
 
 ---
 
@@ -165,6 +171,110 @@ For detailed architecture and failure-handling decisions, see [`SYSTEM_DESIGN.md
 
 ---
 
+# ⛓️ Blockchain Prescription Verification
+
+Forged and altered prescriptions are a real problem: a dosage changed with a pen, or a prescription that was never issued at all. CarePulse makes every prescription **independently verifiable**: when a doctor completes a consultation, the prescription is fingerprinted, signed with the doctor's key, and anchored to a public blockchain through the `MedicalRegistry` smart contract. A pharmacist scans the QR code and the browser checks the chain directly. If one character was changed, verification fails.
+
+### What is (and is not) stored on-chain
+
+| On-chain (public, permanent) | Off-chain (private, in PostgreSQL) |
+| --- | --- |
+| Salted SHA-256 fingerprint of the record | Full prescription, patient name, clinical notes |
+| Issuing doctor's wallet address, name, specialization | The random salt and the exact canonical document |
+| Issue time, record type, revoked flag | Anchoring status, retries, transaction hashes |
+
+**No patient data ever touches the chain.** A public ledger is permanent, so writing health data to it would violate HIPAA / India's DPDP Act. A 32-byte random salt is mixed into every record before hashing, so a short prescription like "Paracetamol 500mg twice daily" cannot be brute-forced back out of its hash.
+
+### How it works
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dr as Doctor
+    participant API as CarePulse API
+    participant DB as PostgreSQL
+    participant SC as MedicalRegistry (Polygon)
+    actor Ph as Pharmacy
+
+    Note over API,SC: One-time: admin verifies the doctor → registerDoctor(wallet)
+    Dr->>API: Complete consultation + prescription
+    API->>API: Canonical JSON + salt → SHA-256 fingerprint
+    API->>API: Doctor's key signs EIP-712 AnchorRecord(hash, type, deadline)
+    API->>DB: Save record (PENDING)
+    API-->>Dr: 200 OK (doesn't wait for the chain)
+    API->>SC: Relayer submits anchorRecord(hash, …, signature)
+    SC->>SC: ecrecover → must be an active, registered doctor
+    SC-->>API: RecordAnchored event
+    API->>DB: CONFIRMED + tx hash
+    Ph->>SC: Scan QR → browser calls verifyRecord(hash) directly
+    SC-->>Ph: Issuer, time, revoked? → Authentic / Altered / Revoked
+```
+
+### Design decisions
+
+* **Signature-based authorization (EIP-712 + relayer).** The contract accepts a record only if it carries a valid typed-data signature from an active, hospital-registered doctor. *Who* submits the transaction doesn't matter: the hospital's relayer wallet pays gas, so doctors never need crypto. Signatures are bound to the chain ID and contract address (no cross-deployment replay) and carry a deadline.
+* **Hospital-managed registry.** The hospital (contract owner, using `Ownable2Step`) verifies doctors on-chain. Suspending a doctor blocks new prescriptions while keeping already-issued ones valid.
+* **Edits revoke the old version.** If a doctor updates a prescription, the previous version is revoked on-chain with the doctor's signature, so no stale-but-valid copy survives.
+* **Trust-minimized verification.** The `/verify` page re-hashes the document *in the browser* and reads the contract *directly* through a public RPC. A compromised CarePulse server could not make a forged prescription show as authentic.
+* **Never blocks the clinic.** Anchoring runs in the background with automatic retries (every minute, up to 6 attempts, with nonce-safe sequential sending and crash recovery). If the blockchain is down, the consultation still completes.
+* **Key custody.** For an out-of-the-box demo, each doctor's signing key is derived on the server from `BLOCKCHAIN_DOCTOR_KEY_SECRET`. In production this would move to a KMS/HSM or doctors' own wallets (e.g. MetaMask). The contract is unchanged either way, because it only checks the signature.
+
+### Verification outcomes
+
+| Result | Meaning |
+| --- | --- |
+| ✅ **Authentic** | Fingerprint on-chain, signed by a verified doctor, not revoked, document unchanged |
+| ⛔ **Revoked** | Genuinely issued but later revoked (e.g. replaced by a corrected version) |
+| ⛔ **Altered / Not found** | Content doesn't match anything a doctor signed: treat as forged |
+| ⏳ **Pending** | Signed and queued, awaiting block confirmation |
+
+### Smart contract
+
+[`blockchain/contracts/MedicalRegistry.sol`](blockchain/contracts/MedicalRegistry.sol) (Solidity 0.8.24, OpenZeppelin 5):
+
+| Function | Who | Purpose |
+| --- | --- | --- |
+| `registerDoctor(wallet, name, specialization, credentialHash)` | Hospital | Verify a doctor |
+| `setDoctorActive(wallet, bool)` | Hospital | Suspend / reinstate |
+| `anchorRecord(hash, type, deadline, signature)` | Anyone (relayer) | Anchor a doctor-signed record |
+| `revokeRecord(hash, deadline, signature)` | Anyone (relayer) | Revoke with the issuing doctor's signature |
+| `adminRevokeRecord(hash)` | Hospital | Revoke any record (fraud investigation) |
+| `verifyRecord(hash)` | Anyone (free `view`) | Issuer, time, type, revoked status |
+
+Covered by **19 Hardhat unit tests** (forgery, tampered signatures, expired signatures, replay across deployments, suspension, revocation rights, two-step ownership) and an **11-step integration test** that drives the server's blockchain code against a live local chain.
+
+### Running it
+
+```bash
+# 1. Contract: compile, test, start a local chain
+cd blockchain
+npm install
+npx hardhat test                 # 19 passing
+npx hardhat node                 # keep running in its own terminal
+
+# 2. Deploy (prints the env values to copy) — local or Polygon Amoy testnet
+npm run deploy:local             # or: npm run deploy:amoy  (needs a funded BLOCKCHAIN_RELAYER_PRIVATE_KEY)
+
+# 3. Server: set BLOCKCHAIN_* in server/.env (see Environment Variables), then
+cd ../server
+npm run prisma:push              # adds the BlockchainRecord table + doctor wallet columns
+npm run test:blockchain          # integration test against the local chain
+npm run dev
+```
+
+Then, as **admin**, open the **Blockchain** tab and click **Verify on-chain** for each doctor. Complete a consultation as a doctor, and the patient's visit shows a **Verified on blockchain** badge with a QR code and a downloadable verifiable copy.
+
+> Free testnet POL for Amoy: [faucet.polygon.technology](https://faucet.polygon.technology/). Without the `BLOCKCHAIN_*` variables the app runs normally with anchoring switched off; on the standalone Vercel demo (no backend), records are fingerprinted in the browser and clearly labelled *demo, not on-chain*.
+
+### Roadmap
+
+* Merkle-batched anchoring (one transaction per day for all records, with per-record Merkle proofs)
+* Medical / fitness certificates using the existing `MEDICAL_CERTIFICATE` record type
+* Encrypted records on IPFS with patient-controlled access grants
+* Doctors signing with their own wallets (MetaMask) instead of server-held keys
+
+---
+
 # 🔑 Testing Credentials
 
 The following accounts are pre-seeded for local/demo testing.
@@ -204,8 +314,14 @@ Healthcare/
 ├── client/
 │   ├── src/
 │   │   ├── api/
+│   │   ├── blockchain/
+│   │   │   ├── canonical.ts         # Browser-side fingerprinting
+│   │   │   └── chain.ts             # Direct on-chain reads (lazy-loaded ethers)
 │   │   ├── components/
 │   │   │   ├── AIInsightsModal.tsx
+│   │   │   ├── BlockchainAdminPanel.tsx
+│   │   │   ├── BlockchainBadge.tsx
+│   │   │   ├── PrescriptionCertificateModal.tsx
 │   │   │   ├── CarePulseBackground.tsx
 │   │   │   ├── FluidShaderCanvas.tsx
 │   │   │   ├── PrescriptionModal.tsx
@@ -218,7 +334,8 @@ Healthcare/
 │   │   │   ├── AdminDashboard.tsx
 │   │   │   ├── AuthPage.tsx
 │   │   │   ├── DoctorDashboard.tsx
-│   │   │   └── PatientDashboard.tsx
+│   │   │   ├── PatientDashboard.tsx
+│   │   │   └── VerifyPage.tsx       # Public /verify page (QR target)
 │   │   ├── types/
 │   │   ├── App.tsx
 │   │   ├── index.css
@@ -226,10 +343,23 @@ Healthcare/
 │   ├── package.json
 │   └── vite.config.ts
 │
+├── blockchain/                      # Hardhat project
+│   ├── contracts/
+│   │   └── MedicalRegistry.sol      # Doctor registry + signed record anchoring
+│   ├── scripts/
+│   │   ├── deploy.ts                # Deploys + exports ABI to server & client
+│   │   └── export-abi.ts
+│   ├── test/
+│   │   └── MedicalRegistry.test.ts  # 19 unit tests
+│   └── hardhat.config.ts
+│
 ├── server/
 │   ├── prisma/
 │   │   └── schema.prisma
 │   ├── src/
+│   │   ├── blockchain/
+│   │   │   ├── core.ts              # Hashing, EIP-712 signing, contract client
+│   │   │   └── MedicalRegistry.abi.json
 │   │   ├── middleware/
 │   │   ├── routes/
 │   │   │   ├── admin.routes.ts
@@ -237,8 +367,10 @@ Healthcare/
 │   │   │   ├── auth.routes.ts
 │   │   │   ├── consultation.routes.ts
 │   │   │   ├── doctor.routes.ts
-│   │   │   └── notification.routes.ts
+│   │   │   ├── notification.routes.ts
+│   │   │   └── verify.routes.ts     # Public verification API
 │   │   ├── services/
+│   │   │   ├── blockchain.service.ts  # Records, anchoring worker, registry admin
 │   │   │   ├── calendar.service.ts
 │   │   │   ├── email.service.ts
 │   │   │   ├── llm.service.ts
@@ -355,6 +487,15 @@ http://localhost:5000/api
 | `GOOGLE_CLIENT_ID`     | Google OAuth client ID            | Optional |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret        | Optional |
 | `GOOGLE_REFRESH_TOKEN` | Google OAuth refresh token        | Optional |
+| `BLOCKCHAIN_RPC_URL`   | JSON-RPC endpoint (e.g. Polygon Amoy) | Optional* |
+| `BLOCKCHAIN_CHAIN_ID`  | Chain ID (`80002` Amoy, `31337` local) | Optional* |
+| `BLOCKCHAIN_REGISTRY_ADDRESS` | Deployed `MedicalRegistry` address | Optional* |
+| `BLOCKCHAIN_RELAYER_PRIVATE_KEY` | Hospital wallet: contract owner, pays gas | Optional* |
+| `BLOCKCHAIN_DOCTOR_KEY_SECRET` | Master secret for deriving doctor signing keys | Optional* |
+| `BLOCKCHAIN_EXPLORER_URL` | Block explorer for links (e.g. `https://amoy.polygonscan.com`) | Optional |
+| `VITE_BLOCKCHAIN_RPC_URL`, `VITE_BLOCKCHAIN_REGISTRY_ADDRESS`, `VITE_BLOCKCHAIN_CHAIN_ID`, `VITE_BLOCKCHAIN_EXPLORER_URL` | Client build vars so `/verify` reads the chain directly from the browser | Optional |
+
+\* Blockchain anchoring is enabled only when all five starred variables are set.
 
 > Never commit `.env` files, API keys, database passwords, or OAuth secrets to GitHub.
 
@@ -397,10 +538,20 @@ GET   /api/consultations/medications
 PATCH /api/consultations/medications/:id/toggle
 ```
 
+### Blockchain Verification (public)
+
+```text
+GET  /api/verify/config
+GET  /api/verify/:recordHash
+```
+
 ### Administration
 
 ```text
 GET    /api/admin/analytics
+GET    /api/admin/blockchain
+POST   /api/admin/doctors/:id/blockchain/register
+POST   /api/admin/doctors/:id/blockchain/status
 POST   /api/admin/doctors/:id/leave
 GET    /api/admin/doctors/:id/leaves
 DELETE /api/admin/doctors/:id/leaves/:date
